@@ -32,6 +32,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import configparser as CP
 from celery.schedules import crontab
+from cachelib.redis import RedisCache
 from dateutil import tz
 from flask_appbuilder.security.manager import AUTH_DB, AUTH_LDAP
 
@@ -136,6 +137,9 @@ DB_PASSWORD = os.environ.get("DATABASE_PASSWORD", "superset")
 DB_HOST = os.environ.get("DATABASE_HOST", "db")
 DB_PORT = os.environ.get("DATABASE_PORT", "5432")
 DB_DATABASE = os.environ.get("DATABASE_DB", "superset")
+
+REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
+REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
 
 # SQLALCHEMY_DATABASE_URI = "sqlite:///" + os.path.join(DATA_DIR, "superset.db")
 SQLALCHEMY_DATABASE_URI = f'{DB_DIALECT}://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_DATABASE}'  # pylint: disable=line-too-long
@@ -503,9 +507,11 @@ WARNING_MSG = None
 
 
 class CeleryConfig:  # pylint: disable=too-few-public-methods
-    BROKER_URL = "sqla+" + SQLALCHEMY_DATABASE_URI #"sqla+sqlite:///celerydb.sqlite"
+    BROKER_URL = f'redis://{REDIS_HOST}:{REDIS_PORT}/0'
+    # BROKER_URL = "sqla+" + SQLALCHEMY_DATABASE_URI #"sqla+sqlite:///celerydb.sqlite"
     CELERY_IMPORTS = ("superset.sql_lab", "superset.tasks")
-    CELERY_RESULT_BACKEND = "db+" + SQLALCHEMY_DATABASE_URI #db+mysql://superset:superset@db/superset"
+    CELERY_RESULT_BACKEND = f'redis://{REDIS_HOST}:{REDIS_PORT}/0'
+    # CELERY_RESULT_BACKEND = "db+" + SQLALCHEMY_DATABASE_URI #db+mysql://superset:superset@db/superset"
     CELERYD_LOG_LEVEL = "DEBUG"
     CELERYD_PREFETCH_MULTIPLIER = 1
     CELERY_ACKS_LATE = False
@@ -566,7 +572,7 @@ SQLLAB_QUERY_COST_ESTIMATE_TIMEOUT = 10  # seconds
 # An instantiated derivative of werkzeug.contrib.cache.BaseCache
 # if enabled, it can be used to store the results of long-running queries
 # in SQL Lab by using the "Run Async" button/feature
-RESULTS_BACKEND = None
+RESULTS_BACKEND = RedisCache(host=REDIS_HOST, port=REDIS_PORT, key_prefix='superset_results')
 
 # Use PyArrow and MessagePack for async query results serialization,
 # rather than JSON. This feature requires additional testing from the
