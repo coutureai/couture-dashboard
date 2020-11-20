@@ -23,12 +23,12 @@ from superset.db_engine_specs import engines
 from superset.db_engine_specs.base import BaseEngineSpec, builtin_time_grains
 from superset.db_engine_specs.sqlite import SqliteEngineSpec
 from superset.utils.core import get_example_database
-from tests.db_engine_specs.base_tests import DbEngineSpecTestCase
+from tests.db_engine_specs.base_tests import TestDbEngineSpec
 
 from ..fixtures.pyodbcRow import Row
 
 
-class DbEngineSpecsTests(DbEngineSpecTestCase):
+class TestDbEngineSpecs(TestDbEngineSpec):
     def test_extract_limit_from_query(self, engine_spec_class=BaseEngineSpec):
         q0 = "select * from table"
         q1 = "select * from mytable limit 10"
@@ -154,13 +154,13 @@ class DbEngineSpecsTests(DbEngineSpecTestCase):
     def test_time_grain_blacklist(self):
         with app.app_context():
             app.config["TIME_GRAIN_BLACKLIST"] = ["PT1M"]
-            time_grain_functions = SqliteEngineSpec.get_time_grain_functions()
+            time_grain_functions = SqliteEngineSpec.get_time_grain_expressions()
             self.assertNotIn("PT1M", time_grain_functions)
 
     def test_time_grain_addons(self):
         with app.app_context():
             app.config["TIME_GRAIN_ADDONS"] = {"PTXM": "x seconds"}
-            app.config["TIME_GRAIN_ADDON_FUNCTIONS"] = {
+            app.config["TIME_GRAIN_ADDON_EXPRESSIONS"] = {
                 "sqlite": {"PTXM": "ABC({col})"}
             }
             time_grains = SqliteEngineSpec.get_time_grains()
@@ -174,7 +174,7 @@ class DbEngineSpecsTests(DbEngineSpecTestCase):
         for engine in engines.values():
             if engine is not BaseEngineSpec:
                 # make sure time grain functions have been defined
-                self.assertGreater(len(engine.get_time_grain_functions()), 0)
+                self.assertGreater(len(engine.get_time_grain_expressions()), 0)
                 # make sure all defined time grains are supported
                 defined_grains = {grain.duration for grain in engine.get_time_grains()}
                 intersection = time_grains.intersection(defined_grains)

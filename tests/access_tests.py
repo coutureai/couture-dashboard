@@ -94,10 +94,12 @@ def create_access_request(session, ds_type, ds_name, role_name, user_name):
     return access_request
 
 
-class RequestAccessTests(SupersetTestCase):
+class TestRequestAccess(SupersetTestCase):
     @classmethod
     def setUpClass(cls):
         with app.app_context():
+            cls.create_druid_test_objects()
+
             security_manager.add_role("override_me")
             security_manager.add_role(TEST_ROLE_1)
             security_manager.add_role(TEST_ROLE_2)
@@ -357,7 +359,7 @@ class RequestAccessTests(SupersetTestCase):
 
         session.commit()
 
-    @mock.patch("superset.utils.core.send_MIME_email")
+    @mock.patch("superset.utils.core.send_mime_email")
     def test_approve(self, mock_send_mime):
         if app.config["ENABLE_ACCESS_REQUEST"]:
             session = db.session
@@ -385,7 +387,7 @@ class RequestAccessTests(SupersetTestCase):
             )
             self.assertEqual(
                 "[Superset] Access to the datasource {} was granted".format(
-                    self.get_table(ds_1_id).full_name
+                    self.get_table_by_id(ds_1_id).full_name
                 ),
                 call_args[2]["Subject"],
             )
@@ -426,7 +428,7 @@ class RequestAccessTests(SupersetTestCase):
             )
             self.assertEqual(
                 "[Superset] Access to the datasource {} was granted".format(
-                    self.get_table(ds_2_id).full_name
+                    self.get_table_by_id(ds_2_id).full_name
                 ),
                 call_args[2]["Subject"],
             )
@@ -567,10 +569,7 @@ class RequestAccessTests(SupersetTestCase):
             self.get_resp(ACCESS_REQUEST.format("druid", druid_ds_4_id, "go"))
             access_request4 = self.get_access_requests("gamma", "druid", druid_ds_4_id)
 
-            self.assertEqual(
-                access_request4.roles_with_datasource,
-                "<ul></ul>".format(access_request4.id),
-            )
+            self.assertEqual(access_request4.roles_with_datasource, "<ul></ul>")
 
             # Case 5. Roles exist that contains the druid datasource.
             # add druid ds to the existing roles

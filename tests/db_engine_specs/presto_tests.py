@@ -21,18 +21,16 @@ from sqlalchemy.engine.result import RowProxy
 from sqlalchemy.sql import select
 
 from superset.db_engine_specs.presto import PrestoEngineSpec
-from tests.db_engine_specs.base_tests import DbEngineSpecTestCase
+from tests.db_engine_specs.base_tests import TestDbEngineSpec
 
 
-class PrestoTests(DbEngineSpecTestCase):
-    @skipUnless(
-        DbEngineSpecTestCase.is_module_installed("pyhive"), "pyhive not installed"
-    )
+class TestPrestoDbEngineSpec(TestDbEngineSpec):
+    @skipUnless(TestDbEngineSpec.is_module_installed("pyhive"), "pyhive not installed")
     def test_get_datatype_presto(self):
         self.assertEqual("STRING", PrestoEngineSpec.get_datatype("string"))
 
     def test_presto_get_view_names_return_empty_list(
-        self
+        self,
     ):  # pylint: disable=invalid-name
         self.assertEqual(
             [], PrestoEngineSpec.get_view_names(mock.ANY, mock.ANY, mock.ANY)

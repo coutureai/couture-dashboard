@@ -17,6 +17,7 @@
 
 import logging
 import os
+from typing import Any, Callable, Dict
 
 import wtforms_json
 from flask import Flask, redirect
@@ -41,13 +42,14 @@ from superset.extensions import (
     talisman,
 )
 from superset.security import SupersetSecurityManager
+from superset.typing import FlaskResponse
 from superset.utils.core import pessimistic_connection_handling
 from superset.utils.log import DBEventLogger, get_event_logger_from_cfg_value
 
 logger = logging.getLogger(__name__)
 
 
-def create_app():
+def create_app() -> Flask:
     app = Flask(__name__)
 
     try:
@@ -68,7 +70,7 @@ def create_app():
 
 class SupersetIndexView(IndexView):
     @expose("/")
-    def index(self):
+    def index(self) -> FlaskResponse:
         return redirect("/superset/welcome")
 
 
@@ -78,7 +80,7 @@ class SupersetAppInitializer:
 
         self.flask_app = app
         self.config = app.config
-        self.manifest: dict = {}
+        self.manifest: Dict[Any, Any] = {}
 
     def pre_init(self) -> None:
         """
@@ -93,7 +95,6 @@ class SupersetAppInitializer:
         """
         Called after any other init tasks
         """
-        pass
 
     def configure_celery(self) -> None:
         celery_app.config_from_object(self.config["CELERY_CONFIG"])
@@ -109,8 +110,8 @@ class SupersetAppInitializer:
             abstract = True
 
             # Grab each call into the task and set up an app context
-            def __call__(self, *args, **kwargs):
-                with flask_app.app_context():
+            def __call__(self, *args: Any, **kwargs: Any) -> Any:
+                with flask_app.app_context():  # type: ignore
                     return task_base.__call__(self, *args, **kwargs)
 
         celery_app.Task = AppContextTask
@@ -130,41 +131,38 @@ class SupersetAppInitializer:
             DruidColumnInlineView,
             Druid,
         )
+        from superset.datasets.api import DatasetRestApi
+        from superset.queries.api import QueryRestApi
         from superset.connectors.sqla.views import (
             TableColumnInlineView,
             SqlMetricInlineView,
             TableModelView,
+            RowLevelSecurityFiltersModelView,
         )
         from superset.views.annotations import (
             AnnotationLayerModelView,
             AnnotationModelView,
         )
         from superset.views.api import Api
-        from superset.views.core import (
-            AccessRequestsModelView,
-            SliceModelView,
-            SliceAsync,
-            SliceAddView,
-            KV,
-            R,
-            Superset,
-            CssTemplateModelView,
-            CssTemplateAsyncModelView,
-        )
-        from superset.views.dashboard.api import DashboardRestApi
+        from superset.views.core import Superset
+        from superset.views.redirects import R
+        from superset.views.key_value import KV
+        from superset.views.access_requests import AccessRequestsModelView
+        from superset.views.css_templates import CssTemplateAsyncModelView
+        from superset.views.css_templates import CssTemplateModelView
+        from superset.charts.api import ChartRestApi
+        from superset.views.chart.views import SliceModelView, SliceAsync
+        from superset.dashboards.api import DashboardRestApi
         from superset.views.dashboard.views import (
             DashboardModelView,
             Dashboard,
-            DashboardAddView,
             DashboardModelViewAsync,
         )
         from superset.views.database.api import DatabaseRestApi
         from superset.views.database.views import (
             DatabaseView,
-            DatabaseTablesAsync,
             CsvToDatabaseView,
-            DatabaseAsync,
-            EDASource
+            ExcelToDatabaseView,
         )
         from superset.views.datasource import Datasource
         from superset.views.log.api import LogRestApi
@@ -172,6 +170,10 @@ class SupersetAppInitializer:
         from superset.views.schedules import (
             DashboardEmailScheduleView,
             SliceEmailScheduleView,
+        )
+        from superset.views.alerts import (
+            AlertModelView,
+            AlertLogModelView,
         )
         from superset.views.sql_lab import (
             QueryView,
@@ -186,9 +188,11 @@ class SupersetAppInitializer:
         #
         # Setup API views
         #
+        appbuilder.add_api(ChartRestApi)
         appbuilder.add_api(DashboardRestApi)
         appbuilder.add_api(DatabaseRestApi)
-
+        appbuilder.add_api(DatasetRestApi)
+        appbuilder.add_api(QueryRestApi)
         #
         # Setup regular views
         #
@@ -202,15 +206,6 @@ class SupersetAppInitializer:
             category_icon="",
         )
         appbuilder.add_view(
-            AnnotationModelView,
-            "Annotations",
-            label=__("Annotations"),
-            icon="fa-comments",
-            category="Manage",
-            category_label=__("Manage"),
-            category_icon="",
-        )
-        appbuilder.add_view(
             DatabaseView,
             "Databases",
             label=__("Databases"),
@@ -219,6 +214,16 @@ class SupersetAppInitializer:
             category_label=__("Sources"),
             category_icon="fa-database",
         )
+        appbuilder.add_link(
+            "Tables",
+            label=__("Tables"),
+            href="/tablemodelview/list/?_flt_1_is_sqllab_view=y",
+            icon="fa-table",
+            category="Sources",
+            category_label=__("Sources"),
+            category_icon="fa-table",
+        )
+        appbuilder.add_separator("Sources")
         appbuilder.add_view(
             SliceModelView,
             "Charts",
@@ -252,6 +257,15 @@ class SupersetAppInitializer:
             category_label=__("Manage"),
             icon="fa-search",
         )
+        if self.config["ENABLE_ROW_LEVEL_SECURITY"]:
+            appbuilder.add_view(
+                RowLevelSecurityFiltersModelView,
+                "Row Level Security Filters",
+                label=__("Row level security filters"),
+                category="Security",
+                category_label=__("Security"),
+                icon="fa-lock",
+            )
 
         #
         # Setup views with no menu
@@ -259,36 +273,33 @@ class SupersetAppInitializer:
         appbuilder.add_view_no_menu(Api)
         appbuilder.add_view_no_menu(CssTemplateAsyncModelView)
         appbuilder.add_view_no_menu(CsvToDatabaseView)
+        appbuilder.add_view_no_menu(ExcelToDatabaseView)
         appbuilder.add_view_no_menu(Dashboard)
-        appbuilder.add_view_no_menu(DashboardAddView)
         appbuilder.add_view_no_menu(DashboardModelViewAsync)
-        appbuilder.add_view_no_menu(DatabaseAsync)
-        appbuilder.add_view_no_menu(DatabaseTablesAsync)
         appbuilder.add_view_no_menu(Datasource)
-        appbuilder.add_view_no_menu(EDASource)
+
+        if feature_flag_manager.is_feature_enabled("KV_STORE"):
+            appbuilder.add_view_no_menu(KV)
+
         appbuilder.add_view_no_menu(R)
         appbuilder.add_view_no_menu(SavedQueryView)
         appbuilder.add_view_no_menu(SavedQueryViewApi)
-        appbuilder.add_view_no_menu(SliceAddView)
         appbuilder.add_view_no_menu(SliceAsync)
         appbuilder.add_view_no_menu(SqlLab)
         appbuilder.add_view_no_menu(SqlMetricInlineView)
+        appbuilder.add_view_no_menu(AnnotationModelView)
         appbuilder.add_view_no_menu(Superset)
         appbuilder.add_view_no_menu(TableColumnInlineView)
         appbuilder.add_view_no_menu(TableModelView)
         appbuilder.add_view_no_menu(TableSchemaView)
         appbuilder.add_view_no_menu(TabStateView)
-        appbuilder.add_view_no_menu(TagView)
+
+        if feature_flag_manager.is_feature_enabled("TAGGING_SYSTEM"):
+            appbuilder.add_view_no_menu(TagView)
 
         #
         # Add links
         #
-        appbuilder.add_link(
-            __("Saved Queries"),
-            href="/sqllab/my_queries/",
-            icon="fa-save",
-            category="SQL Lab",
-        )
         appbuilder.add_link(
             "Import Dashboards",
             label=__("Import Dashboards"),
@@ -308,6 +319,12 @@ class SupersetAppInitializer:
             category_label=__("SQL Lab"),
         )
         appbuilder.add_link(
+            __("Saved Queries"),
+            href="/sqllab/my_queries/",
+            icon="fa-save",
+            category="SQL Lab",
+        )
+        appbuilder.add_link(
             "Query Search",
             label=_("Query Search"),
             href="/superset/sqllab#search",
@@ -316,32 +333,40 @@ class SupersetAppInitializer:
             category="SQL Lab",
             category_label=__("SQL Lab"),
         )
-        appbuilder.add_link(
-            "Upload a CSV",
-            label=__("Upload a CSV"),
-            href="/csvtodatabaseview/form",
-            icon="fa-upload",
-            category="Sources",
-            category_label=__("Sources"),
-            category_icon="fa-wrench",
-        )
-        appbuilder.add_link(
-            "Tables",
-            label=__("Tables"),
-            href="/tablemodelview/list/?_flt_1_is_sqllab_view=y",
-            icon="fa-table",
-            category="Sources",
-            category_label=__("Sources"),
-            category_icon="fa-table",
-        )
+        if self.config["CSV_EXTENSIONS"].intersection(
+            self.config["ALLOWED_EXTENSIONS"]
+        ):
+            appbuilder.add_link(
+                "Upload a CSV",
+                label=__("Upload a CSV"),
+                href="/csvtodatabaseview/form",
+                icon="fa-upload",
+                category="Sources",
+                category_label=__("Sources"),
+                category_icon="fa-wrench",
+            )
+        try:
+            import xlrd  # pylint: disable=unused-import
+
+            if self.config["EXCEL_EXTENSIONS"].intersection(
+                self.config["ALLOWED_EXTENSIONS"]
+            ):
+                appbuilder.add_link(
+                    "Upload Excel",
+                    label=__("Upload Excel"),
+                    href="/exceltodatabaseview/form",
+                    icon="fa-upload",
+                    category="Sources",
+                    category_label=__("Sources"),
+                    category_icon="fa-wrench",
+                )
+        except ImportError:
+            pass
 
         #
         # Conditionally setup log views
         #
-        if (
-            not self.config["FAB_ADD_SECURITY_VIEWS"] is False
-            or self.config["SUPERSET_LOG_VIEW"] is False
-        ):
+        if self.config["FAB_ADD_SECURITY_VIEWS"] and self.config["SUPERSET_LOG_VIEW"]:
             appbuilder.add_api(LogRestApi)
             appbuilder.add_view(
                 LogModelView,
@@ -373,6 +398,17 @@ class SupersetAppInitializer:
                 category_label=__("Manage"),
                 icon="fa-search",
             )
+
+        if self.config["ENABLE_ALERTS"]:
+            appbuilder.add_view(
+                AlertModelView,
+                "Alerts",
+                label=__("Alerts"),
+                category="Manage",
+                category_label=__("Manage"),
+                icon="fa-exclamation-triangle",
+            )
+            appbuilder.add_view_no_menu(AlertLogModelView)
 
         #
         # Conditionally add Access Request Model View
@@ -412,24 +448,26 @@ class SupersetAppInitializer:
             appbuilder.add_view_no_menu(DruidMetricInlineView)
             appbuilder.add_view_no_menu(DruidColumnInlineView)
             appbuilder.add_view_no_menu(Druid)
-            appbuilder.add_link(
-                "Scan New Datasources",
-                label=__("Scan New Datasources"),
-                href="/druid/scan_new_datasources/",
-                category="Sources",
-                category_label=__("Sources"),
-                category_icon="fa-database",
-                icon="fa-refresh",
-            )
-            appbuilder.add_link(
-                "Refresh Druid Metadata",
-                label=__("Refresh Druid Metadata"),
-                href="/druid/refresh_datasources/",
-                category="Sources",
-                category_label=__("Sources"),
-                category_icon="fa-database",
-                icon="fa-cog",
-            )
+
+            if self.config["DRUID_METADATA_LINKS_ENABLED"]:
+                appbuilder.add_link(
+                    "Scan New Datasources",
+                    label=__("Scan New Datasources"),
+                    href="/druid/scan_new_datasources/",
+                    category="Sources",
+                    category_label=__("Sources"),
+                    category_icon="fa-database",
+                    icon="fa-refresh",
+                )
+                appbuilder.add_link(
+                    "Refresh Druid Metadata",
+                    label=__("Refresh Druid Metadata"),
+                    href="/druid/refresh_datasources/",
+                    category="Sources",
+                    category_label=__("Sources"),
+                    category_icon="fa-database",
+                    icon="fa-cog",
+                )
             appbuilder.add_separator("Sources")
 
     def init_app_in_ctx(self) -> None:
@@ -455,51 +493,41 @@ class SupersetAppInitializer:
         order to fully init the app
         """
         self.pre_init()
-
         self.setup_db()
-
         self.configure_celery()
-
         self.setup_event_logger()
-
         self.setup_bundle_manifest()
-
         self.register_blueprints()
-
         self.configure_wtf()
-
         self.configure_logging()
-
         self.configure_middlewares()
-
         self.configure_cache()
-
         self.configure_jinja_context()
 
-        with self.flask_app.app_context():
+        with self.flask_app.app_context():  # type: ignore
             self.init_app_in_ctx()
 
         self.post_init()
 
-    def setup_event_logger(self):
+    def setup_event_logger(self) -> None:
         _event_logger["event_logger"] = get_event_logger_from_cfg_value(
             self.flask_app.config.get("EVENT_LOGGER", DBEventLogger())
         )
 
-    def configure_data_sources(self):
+    def configure_data_sources(self) -> None:
         # Registering sources
         module_datasource_map = self.config["DEFAULT_MODULE_DS_MAP"]
         module_datasource_map.update(self.config["ADDITIONAL_MODULE_DS_MAP"])
         ConnectorRegistry.register_sources(module_datasource_map)
 
-    def configure_cache(self):
+    def configure_cache(self) -> None:
         cache_manager.init_app(self.flask_app)
         results_backend_manager.init_app(self.flask_app)
 
-    def configure_feature_flags(self):
+    def configure_feature_flags(self) -> None:
         feature_flag_manager.init_app(self.flask_app)
 
-    def configure_fab(self):
+    def configure_fab(self) -> None:
         if self.config["SILENCE_FAB"]:
             logging.getLogger("flask_appbuilder").setLevel(logging.ERROR)
 
@@ -517,7 +545,7 @@ class SupersetAppInitializer:
         appbuilder.update_perms = False
         appbuilder.init_app(self.flask_app, db.session)
 
-    def configure_url_map_converters(self):
+    def configure_url_map_converters(self) -> None:
         #
         # Doing local imports here as model importing causes a reference to
         # app.config to be invoked and we need the current_app to have been setup
@@ -528,10 +556,10 @@ class SupersetAppInitializer:
         self.flask_app.url_map.converters["regex"] = RegexConverter
         self.flask_app.url_map.converters["object_type"] = ObjectTypeConverter
 
-    def configure_jinja_context(self):
+    def configure_jinja_context(self) -> None:
         jinja_context_manager.init_app(self.flask_app)
 
-    def configure_middlewares(self):
+    def configure_middlewares(self) -> None:
         if self.config["ENABLE_CORS"]:
             from flask_cors import CORS
 
@@ -540,24 +568,28 @@ class SupersetAppInitializer:
         if self.config["ENABLE_PROXY_FIX"]:
             from werkzeug.middleware.proxy_fix import ProxyFix
 
-            self.flask_app.wsgi_app = ProxyFix(
+            self.flask_app.wsgi_app = ProxyFix(  # type: ignore
                 self.flask_app.wsgi_app, **self.config["PROXY_FIX_CONFIG"]
             )
 
         if self.config["ENABLE_CHUNK_ENCODING"]:
 
             class ChunkedEncodingFix:  # pylint: disable=too-few-public-methods
-                def __init__(self, app):
+                def __init__(self, app: Flask) -> None:
                     self.app = app
 
-                def __call__(self, environ, start_response):
+                def __call__(
+                    self, environ: Dict[str, Any], start_response: Callable[..., Any]
+                ) -> Any:
                     # Setting wsgi.input_terminated tells werkzeug.wsgi to ignore
                     # content-length and read the stream till the end.
                     if environ.get("HTTP_TRANSFER_ENCODING", "").lower() == "chunked":
                         environ["wsgi.input_terminated"] = True
                     return self.app(environ, start_response)
 
-            self.flask_app.wsgi_app = ChunkedEncodingFix(self.flask_app.wsgi_app)
+            self.flask_app.wsgi_app = ChunkedEncodingFix(  # type: ignore
+                self.flask_app.wsgi_app  # type: ignore
+            )
 
         if self.config["UPLOAD_FOLDER"]:
             try:
@@ -566,42 +598,43 @@ class SupersetAppInitializer:
                 pass
 
         for middleware in self.config["ADDITIONAL_MIDDLEWARE"]:
-            self.flask_app.wsgi_app = middleware(self.flask_app.wsgi_app)
+            self.flask_app.wsgi_app = middleware(  # type: ignore
+                self.flask_app.wsgi_app
+            )
 
         # Flask-Compress
-        if self.config["ENABLE_FLASK_COMPRESS"]:
-            Compress(self.flask_app)
+        Compress(self.flask_app)
 
         if self.config["TALISMAN_ENABLED"]:
             talisman.init_app(self.flask_app, **self.config["TALISMAN_CONFIG"])
 
-    def configure_logging(self):
+    def configure_logging(self) -> None:
         self.config["LOGGING_CONFIGURATOR"].configure_logging(
             self.config, self.flask_app.debug
         )
 
-    def setup_db(self):
+    def setup_db(self) -> None:
         db.init_app(self.flask_app)
 
-        with self.flask_app.app_context():
+        with self.flask_app.app_context():  # type: ignore
             pessimistic_connection_handling(db.engine)
 
         migrate.init_app(self.flask_app, db=db, directory=APP_DIR + "/migrations")
 
-    def configure_wtf(self):
+    def configure_wtf(self) -> None:
         if self.config["WTF_CSRF_ENABLED"]:
             csrf = CSRFProtect(self.flask_app)
             csrf_exempt_list = self.config["WTF_CSRF_EXEMPT_LIST"]
             for ex in csrf_exempt_list:
                 csrf.exempt(ex)
 
-    def register_blueprints(self):
+    def register_blueprints(self) -> None:
         for bp in self.config["BLUEPRINTS"]:
             try:
-                logger.info(f"Registering blueprint: '{bp.name}'")
+                logger.info("Registering blueprint: %s", bp.name)
                 self.flask_app.register_blueprint(bp)
             except Exception:  # pylint: disable=broad-except
                 logger.exception("blueprint registration failed")
 
-    def setup_bundle_manifest(self):
+    def setup_bundle_manifest(self) -> None:
         manifest_processor.init_app(self.flask_app)

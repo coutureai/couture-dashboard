@@ -14,10 +14,10 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-# pylint: disable=C,R,W
 """Views used by the SqlAlchemy connector"""
 import logging
 import re
+from typing import List, Union
 
 from flask import flash, Markup, redirect
 from flask_appbuilder import CompactCRUDMixin, expose
@@ -29,25 +29,31 @@ from flask_babel import gettext as __, lazy_gettext as _
 from wtforms.ext.sqlalchemy.fields import QuerySelectField
 from wtforms.validators import Regexp
 
-from superset import appbuilder, db, security_manager
+from superset import app, db
 from superset.connectors.base.views import DatasourceModelView
+from superset.connectors.sqla import models
+from superset.constants import RouteMethod
+from superset.typing import FlaskResponse
 from superset.utils import core as utils
 from superset.views.base import (
+    create_table_permissions,
     DatasourceFilter,
     DeleteMixin,
-    get_datasource_exist_error_msg,
     ListWidgetWithCheckboxes,
     SupersetModelView,
+    validate_sqlatable,
     YamlExportMixin,
 )
-
-from . import models
 
 logger = logging.getLogger(__name__)
 
 
-class TableColumnInlineView(CompactCRUDMixin, SupersetModelView):
+class TableColumnInlineView(  # pylint: disable=too-many-ancestors
+    CompactCRUDMixin, SupersetModelView
+):
     datamodel = SQLAInterface(models.TableColumn)
+    # TODO TODO, review need for this on related_views
+    include_route_methods = RouteMethod.RELATED_VIEW_SET | RouteMethod.API_SET
 
     list_title = _("Columns")
     show_title = _("Show Column")
@@ -162,8 +168,11 @@ class TableColumnInlineView(CompactCRUDMixin, SupersetModelView):
     edit_form_extra_fields = add_form_extra_fields
 
 
-class SqlMetricInlineView(CompactCRUDMixin, SupersetModelView):
+class SqlMetricInlineView(  # pylint: disable=too-many-ancestors
+    CompactCRUDMixin, SupersetModelView
+):
     datamodel = SQLAInterface(models.SqlMetric)
+    include_route_methods = RouteMethod.RELATED_VIEW_SET | RouteMethod.API_SET
 
     list_title = _("Metrics")
     show_title = _("Show Metric")
@@ -221,8 +230,49 @@ class SqlMetricInlineView(CompactCRUDMixin, SupersetModelView):
     edit_form_extra_fields = add_form_extra_fields
 
 
-class TableModelView(DatasourceModelView, DeleteMixin, YamlExportMixin):
+class RowLevelSecurityFiltersModelView(  # pylint: disable=too-many-ancestors
+    SupersetModelView, DeleteMixin
+):
+    datamodel = SQLAInterface(models.RowLevelSecurityFilter)
+
+    list_title = _("Row level security filter")
+    show_title = _("Show Row level security filter")
+    add_title = _("Add Row level security filter")
+    edit_title = _("Edit Row level security filter")
+
+    list_columns = ["tables", "roles", "clause", "creator", "modified"]
+    order_columns = ["tables", "clause", "modified"]
+    edit_columns = ["tables", "roles", "clause"]
+    show_columns = edit_columns
+    search_columns = ("tables", "roles", "clause")
+    add_columns = edit_columns
+    base_order = ("changed_on", "desc")
+    description_columns = {
+        "tables": _("These are the tables this filter will be applied to."),
+        "roles": _("These are the roles this filter will be applied to."),
+        "clause": _(
+            "This is the condition that will be added to the WHERE clause. "
+            "For example, to only return rows for a particular client, "
+            "you might put in: client_id = 9"
+        ),
+    }
+    label_columns = {
+        "tables": _("Tables"),
+        "roles": _("Roles"),
+        "clause": _("Clause"),
+        "creator": _("Creator"),
+        "modified": _("Modified"),
+    }
+    if app.config["RLS_FORM_QUERY_REL_FIELDS"]:
+        add_form_query_rel_fields = app.config["RLS_FORM_QUERY_REL_FIELDS"]
+        edit_form_query_rel_fields = add_form_query_rel_fields
+
+
+class TableModelView(  # pylint: disable=too-many-ancestors
+    DatasourceModelView, DeleteMixin, YamlExportMixin
+):
     datamodel = SQLAInterface(models.SqlaTable)
+    include_route_methods = RouteMethod.CRUD_SET
 
     list_title = _("Tables")
     show_title = _("Show Table")
@@ -250,7 +300,11 @@ class TableModelView(DatasourceModelView, DeleteMixin, YamlExportMixin):
     ]
     base_filters = [["id", DatasourceFilter, lambda: []]]
     show_columns = edit_columns + ["perm", "slices"]
-    related_views = [TableColumnInlineView, SqlMetricInlineView]
+    related_views = [
+        TableColumnInlineView,
+        SqlMetricInlineView,
+        RowLevelSecurityFiltersModelView,
+    ]
     base_order = ("changed_on", "desc")
     search_columns = ("database", "schema", "table_name", "owners", "is_sqllab_view")
     description_columns = {
@@ -333,38 +387,14 @@ class TableModelView(DatasourceModelView, DeleteMixin, YamlExportMixin):
         )
     }
 
-    def pre_add(self, table):
-        with db.session.no_autoflush:
-            table_query = db.session.query(models.SqlaTable).filter(
-                models.SqlaTable.table_name == table.table_name,
-                models.SqlaTable.schema == table.schema,
-                models.SqlaTable.database_id == table.database.id,
-            )
-            if db.session.query(table_query.exists()).scalar():
-                raise Exception(get_datasource_exist_error_msg(table.full_name))
+    def pre_add(self, item: "TableModelView") -> None:
+        validate_sqlatable(item)
 
-        # Fail before adding if the table can't be found
-        try:
-            table.get_sqla_table_object()
-        except Exception as e:
-            logger.exception(f"Got an error in pre_add for {table.name}")
-            raise Exception(
-                _(
-                    "Table [{}] could not be found, "
-                    "please double check your "
-                    "database connection, schema, and "
-                    "table name, error: {}"
-                ).format(table.name, str(e))
-            )
-
-    def post_add(self, table, flash_message=True):
-        table.fetch_metadata()
-        security_manager.add_permission_view_menu("datasource_access", table.get_perm())
-        if table.schema:
-            security_manager.add_permission_view_menu(
-                "schema_access", table.schema_perm
-            )
-
+    def post_add(  # pylint: disable=arguments-differ
+        self, item: "TableModelView", flash_message: bool = True
+    ) -> None:
+        item.fetch_metadata()
+        create_table_permissions(item)
         if flash_message:
             flash(
                 _(
@@ -376,15 +406,15 @@ class TableModelView(DatasourceModelView, DeleteMixin, YamlExportMixin):
                 "info",
             )
 
-    def post_update(self, table):
-        self.post_add(table, flash_message=False)
+    def post_update(self, item: "TableModelView") -> None:
+        self.post_add(item, flash_message=False)
 
-    def _delete(self, pk):
+    def _delete(self, pk: int) -> None:
         DeleteMixin._delete(self, pk)
 
     @expose("/edit/<pk>", methods=["GET", "POST"])
     @has_access
-    def edit(self, pk):
+    def edit(self, pk: int) -> FlaskResponse:
         """Simple hack to redirect to explore view after saving"""
         resp = super(TableModelView, self).edit(pk)
         if isinstance(resp, str):
@@ -394,17 +424,19 @@ class TableModelView(DatasourceModelView, DeleteMixin, YamlExportMixin):
     @action(
         "refresh", __("Refresh Metadata"), __("Refresh column metadata"), "fa-refresh"
     )
-    def refresh(self, tables):
+    def refresh(  # pylint: disable=no-self-use
+        self, tables: Union["TableModelView", List["TableModelView"]]
+    ) -> FlaskResponse:
         if not isinstance(tables, list):
             tables = [tables]
         successes = []
         failures = []
-        for t in tables:
+        for table_ in tables:
             try:
-                t.fetch_metadata()
-                successes.append(t)
-            except Exception:
-                failures.append(t)
+                table_.fetch_metadata()
+                successes.append(table_)
+            except Exception:  # pylint: disable=broad-except
+                failures.append(table_)
 
         if len(successes) > 0:
             success_msg = _(
@@ -420,3 +452,11 @@ class TableModelView(DatasourceModelView, DeleteMixin, YamlExportMixin):
             flash(failure_msg, "danger")
 
         return redirect("/tablemodelview/list/")
+
+    @expose("/list/")
+    @has_access
+    def list(self) -> FlaskResponse:
+        if not app.config["ENABLE_REACT_CRUD_VIEWS"]:
+            return super().list()
+
+        return super().render_app_template()

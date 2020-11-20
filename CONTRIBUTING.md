@@ -24,36 +24,74 @@ little bit helps, and credit will always be given.
 
 ## Table of Contents
 
-- [Orientation](#orientation)
-- [Types of Contributions](#types-of-contributions)
-  - [Report Bugs](#report-bugs)
-  - [Submit Ideas or Feature Requests](#submit-ideas-or-feature-requests)
-  - [Ask Questions](#ask-questions)
-  - [Fix Bugs](#fix-bugs)
-  - [Implement Features](#implement-features)
-  - [Improve Documentation](#improve-documentation)
-  - [Add Translations](#add-translations)
-- [Pull Request Guidelines](#pull-request-guidelines)
-  - [Protocol](#protocol)
-- [Managing Issues and PRs](#managing-issues-and-prs)
-- [Setup Local Environment for Development](#setup-local-environment-for-development)
-  - [Documentation](#documentation)
-  - [Flask server](#flask-server)
-  - [Frontend assets](#frontend-assets)
-- [Testing](#testing)
-  - [JavaScript testing](#javascript-testing)
-  - [Integration testing](#integration-testing)
+- [Contributing](#contributing)
+  - [Table of Contents](#table-of-contents)
+  - [Orientation](#orientation)
+  - [Types of Contributions](#types-of-contributions)
+    - [Report Bug](#report-bug)
+    - [Submit Ideas or Feature Requests](#submit-ideas-or-feature-requests)
+    - [Fix Bugs](#fix-bugs)
+    - [Implement Features](#implement-features)
+    - [Improve Documentation](#improve-documentation)
+    - [Add Translations](#add-translations)
+    - [Ask Questions](#ask-questions)
+  - [Pull Request Guidelines](#pull-request-guidelines)
+    - [Protocol](#protocol)
+      - [Authoring](#authoring)
+      - [Reviewing](#reviewing)
+      - [Merging](#merging)
+      - [Post-merge Responsibility](#post-merge-responsibility)
+  - [Managing Issues and PRs](#managing-issues-and-prs)
+  - [Revert Guidelines](#revert-guidelines)
+  - [Setup Local Environment for Development](#setup-local-environment-for-development)
+    - [Documentation](#documentation)
+      - [Images](#images)
+      - [API documentation](#api-documentation)
+    - [Flask server](#flask-server)
+      - [OS Dependencies](#os-dependencies)
+      - [Logging to the browser console](#logging-to-the-browser-console)
+    - [Frontend Assets](#frontend-assets)
+      - [nvm and node](#nvm-and-node)
+      - [Prerequisite](#prerequisite)
+      - [Installing Dependencies](#installing-dependencies)
+      - [Building](#building)
+      - [Docker (docker-compose)](#docker-docker-compose)
+      - [Updating NPM packages](#updating-npm-packages)
+      - [Feature flags](#feature-flags)
+  - [Git Hooks](#git-hooks)
   - [Linting](#linting)
-- [Translating](#translating)
-  - [Enabling language selection](#enabling-language-selection)
-  - [Extracting new strings for translation](#extracting-new-strings-for-translation)
-  - [Creating a new language dictionary](#creating-a-new-language-dictionary)
-- [Tips](#tips)
-  - [Adding a new datasource](#adding-a-new-datasource)
-  - [Creating a new visualization type](#creating-a-new-visualization-type)
-  - [Adding a DB migration](#adding-a-db-migration)
-  - [Merging DB migrations](#merging-db-migrations)
-  - [SQL Lab Async](#sql-lab-async)
+  - [Conventions](#conventions)
+    - [Python](#python)
+  - [Typing](#typing)
+    - [Python](#python-1)
+    - [TypeScript](#typescript)
+  - [Testing](#testing)
+    - [Python Testing](#python-testing)
+    - [Frontend Testing](#frontend-testing)
+    - [Integration Testing](#integration-testing)
+  - [Translating](#translating)
+    - [Enabling language selection](#enabling-language-selection)
+    - [Extracting new strings for translation](#extracting-new-strings-for-translation)
+    - [Creating a new language dictionary](#creating-a-new-language-dictionary)
+  - [Tips](#tips)
+    - [Adding a new datasource](#adding-a-new-datasource)
+    - [Improving visualizations](#improving-visualizations)
+    - [Adding a DB migration](#adding-a-db-migration)
+    - [Merging DB migrations](#merging-db-migrations)
+    - [SQL Lab Async](#sql-lab-async)
+  - [Chart Parameters](#chart-parameters)
+    - [Datasource & Chart Type](#datasource--chart-type)
+    - [Time](#time)
+    - [GROUP BY](#group-by)
+    - [NOT GROUPED BY](#not-grouped-by)
+    - [Y Axis 1](#y-axis-1)
+    - [Y Axis 2](#y-axis-2)
+    - [Query](#query)
+    - [Filters Configuration](#filters-configuration)
+    - [Chart Options](#chart-options)
+    - [Y Axis](#y-axis)
+    - [Other](#other)
+    - [Unclassified](#unclassified)
 
 ## Orientation
 
@@ -63,8 +101,8 @@ Here's a list of repositories that contain Superset-related packages:
   is the main repository containing the `apache-superset` Python package
   distributed on
   [pypi](https://pypi.org/project/apache-superset/). This repository
-  also includes Superset's main Javascript bundles and react apps under
-  the [superset/assets](https://github.com/apache/incubator-superset/tree/master/superset/assets)
+  also includes Superset's main TypeScript/JavaScript bundles and react apps under
+  the [superset-frontend](https://github.com/apache/incubator-superset/tree/master/superset-frontend)
   folder.
 - [apache-superset/superset-ui](https://github.com/apache-superset/superset-ui)
   contains core Superset's
@@ -164,7 +202,7 @@ Finally, never submit a PR that will put master branch in broken state. If the P
   - If no screenshot is provided, the committers will mark the PR with `need:screenshot` label and will not review until screenshot is provided.
 - **Dependencies:** Be careful about adding new dependency and avoid unnecessary dependencies.
   - For Python, include it in `setup.py` denoting any specific restrictions and in `requirements.txt` pinned to a specific version which ensures that the application build is deterministic.
-  - For Javascript, include new libraries in `package.json`
+  - For TypeScript/JavaScript, include new libraries in `package.json`
 - **Tests:** The pull request should include tests, either as doctests, unit tests, or both. Make sure to resolve all errors and test failures. See [Testing](#testing) for how to run tests.
 - **Documentation:** If the pull request adds functionality, the docs should be updated as part of the same PR. Doc string are often sufficient, make sure to follow the sphinx compatible standards.
 - **CI:** Reviewers will not review the code until all CI tests are passed. Sometimes there can be flaky tests. You can close and open PR to re-run CI test. Please report if the issue persists. After the CI fix has been deployed to `master`, please rebase your PR.
@@ -225,6 +263,23 @@ Committers may also update title to reflect the issue/PR content if the author-p
 If the PR passes CI tests and does not have any `need:` labels, it is ready for review, add label `review` and/or `design-review`.
 
 If an issue/PR has been inactive for >=30 days, it will be closed. If it does not have any status label, add `inactive`.
+
+## Revert Guidelines
+
+Reverting changes that are causing issues in the master branch is a normal and expected part of the development process. In an open source community, the ramifications of a change cannot always be fully understood. With that in mind, here are some considerations to keep in mind when considering a revert:
+
+- **Availability of the PR author:** If the original PR author or the engineer who merged the code is highly available and can provide a fix in a reasonable timeframe, this would counter-indicate reverting.
+- **Severity of the issue:** How severe is the problem on master? Is it keeping the project from moving forward? Is there user impact? What percentage of users will experience a problem?
+- **Size of the change being reverted:** Reverting a single small PR is a much lower-risk proposition than reverting a massive, multi-PR change.
+- **Age of the change being reverted:** Reverting a recently-merged PR will be more acceptable than reverting an older PR. A bug discovered in an older PR is unlikely to be causing widespread serious issues.
+- **Risk inherent in reverting:** Will the reversion break critical functionality? Is the medicine more dangerous than the disease?
+- **Difficulty of crafting a fix:** In the case of issues with a clear solution, it may be preferable to implement and merge a fix rather than a revert.
+
+Should you decide that reverting is desirable, it is the responsibility of the Contributor performing the revert to:
+
+- **Contact the interested parties:** The PR's author and the engineer who merged the work should both be contacted and informed of the revert.
+- **Provide concise reproduction steps:** Ensure that the issue can be clearly understood and duplicated by the original author of the PR.
+- **Put the revert through code review:** The revert must be approved by another committer.
 
 ## Setup Local Environment for Development
 
@@ -305,15 +360,15 @@ Then, [open a pull request](https://help.github.com/articles/about-pull-requests
 If you're adding new images to the documentation, you'll notice that the images
 referenced in the rst, e.g.
 
-    .. image:: _static/img/tutorial/tutorial_01_sources_database.png
+    .. image:: _static/images/tutorial/tutorial_01_sources_database.png
 
 aren't actually stored in that directory. Instead, you should add and commit
-images (and any other static assets) to the `superset/assets/images` directory.
+images (and any other static assets) to the `superset-frontend/images` directory.
 When the docs are deployed to https://superset.incubator.apache.org/, images
-are copied from there to the `_static/img` directory, just like they're referenced
+are copied from there to the `_static/images` directory, just like they're referenced
 in the docs.
 
-For example, the image referenced above actually lives in `superset/assets/images/tutorial`. Since the image is moved during the documentation build process, the docs reference the image in `_static/img/tutorial` instead.
+For example, the image referenced above actually lives in `superset-frontend/images/tutorial`. Since the image is moved during the documentation build process, the docs reference the image in `_static/images/tutorial` instead.
 
 #### API documentation
 
@@ -332,7 +387,7 @@ Make sure your machine meets the [OS dependencies](https://superset.incubator.ap
 
 Developers should use a virtualenv.
 
-```
+```bash
 pip install virtualenv
 ```
 
@@ -401,7 +456,7 @@ app.logger.info(form_data)
 
 ### Frontend Assets
 
-Frontend assets (JavaScript, CSS, and images) must be compiled in order to properly display the web UI. The `superset/assets` directory contains all NPM-managed front end assets. Note that there are additional frontend assets bundled with Flask-Appbuilder (e.g. jQuery and bootstrap); these are not managed by NPM, and may be phased out in the future.
+Frontend assets (TypeScript, JavaScript, CSS, and images) must be compiled in order to properly display the web UI. The `superset-frontend` directory contains all NPM-managed front end assets. Note that there are additional frontend assets bundled with Flask-Appbuilder (e.g. jQuery and bootstrap); these are not managed by NPM, and may be phased out in the future.
 
 #### nvm and node
 
@@ -420,7 +475,7 @@ Install third-party dependencies listed in `package.json`:
 
 ```bash
 # From the root of the repository
-cd superset/assets
+cd superset-frontend
 
 # Install dependencies from `package-lock.json`
 npm ci
@@ -439,6 +494,10 @@ npm run dev-server -- --devserverPort=9001
 
 # Run the dev server proxying to a Flask server on a non-default port
 npm run dev-server -- --supersetPort=8081
+
+# Or proxy it to a remote backend so you can test frontend changes without
+# starting the backend locally
+npm run dev-server -- --superset=https://superset-dev.example.com
 ```
 
 Alternatively you can use one of the following commands.
@@ -447,7 +506,7 @@ Alternatively you can use one of the following commands.
 # Start a watcher that recompiles your assets as you modify them (but have to manually reload your browser to see changes.)
 npm run dev
 
-# Compile the Javascript and CSS in production/optimized mode for official releases
+# Compile the TypeScript/JavaScript and CSS in production/optimized mode for official releases
 npm run prod
 ```
 
@@ -464,22 +523,22 @@ See docs [here](docker/README.md)
 #### Updating NPM packages
 
 Use npm in the prescribed way, making sure that
-`superset/assets/package-lock.json` is updated according to `npm`-prescribed
+`superset-frontend/package-lock.json` is updated according to `npm`-prescribed
 best practices.
 
 #### Feature flags
 
 Superset supports a server-wide feature flag system, which eases the incremental development of features. To add a new feature flag, simply modify `superset_config.py` with something like the following:
 
-```
+```python
 FEATURE_FLAGS = {
     'SCOPED_FILTER': True,
 }
 ```
 
-If you want to use the same flag in the client code, also add it to the FeatureFlag TypeScript enum in `superset/assets/src/featureFlags.ts`. For example,
+If you want to use the same flag in the client code, also add it to the FeatureFlag TypeScript enum in `superset-frontend/src/featureFlags.ts`. For example,
 
-```
+```typescript
 export enum FeatureFlag {
   SCOPED_FILTER = 'SCOPED_FILTER',
 }
@@ -506,8 +565,8 @@ Lint the project with:
 # for python
 tox -e flake8
 
-# for javascript
-cd superset/assets
+# for frontend
+cd superset-frontend
 npm ci
 npm run lint
 ```
@@ -532,6 +591,39 @@ blueprints = app.config.get("BLUEPRINTS")
 ```
 
 or similar as the later will cause typing issues. The former is of type `List[Callable]` whereas the later is of type `Optional[List[Callable]]`.
+
+## Typing
+
+### Python
+
+To ensure clarity, consistency, all readability, _all_ new functions should use
+[type hints](https://docs.python.org/3/library/typing.html) and include a
+docstring using Sphinx documentation.
+
+Note per [PEP-484](https://www.python.org/dev/peps/pep-0484/#exceptions) no
+syntax for listing explicitly raised exceptions is proposed and thus the
+recommendation is to put this information in a docstring, i.e.,
+
+```python
+import math
+from typing import Union
+
+
+def sqrt(x: Union[float, int]) -> Union[float, int]:
+    """
+    Return the square root of x.
+
+    :param x: A number
+    :returns: The square root of the given number
+    :raises ValueError: If the number is negative
+    """
+
+    return math.sqrt(x)
+```
+
+### TypeScript
+
+TypeScript is fully supported and is the recommended language for writing all new frontend components. When modifying existing functions/components, migrating to TypeScript is appreciated, but not required. Examples of migrating functions/components to TypeScript can be found in [#9162](https://github.com/apache/incubator-superset/pull/9162) and [#9180](https://github.com/apache/incubator-superset/pull/9180).
 
 ## Testing
 
@@ -567,39 +659,12 @@ Note that the test environment uses a temporary directory for defining the
 SQLite databases which will be cleared each time before the group of test
 commands are invoked.
 
-#### Typing
+### Frontend Testing
 
-To ensure clarity, consistency, all readability, _all_ new functions should use
-[type hints](https://docs.python.org/3/library/typing.html) and include a
-docstring using Sphinx documentation.
-
-Note per [PEP-484](https://www.python.org/dev/peps/pep-0484/#exceptions) no
-syntax for listing explicitly raised exceptions is proposed and thus the
-recommendation is to put this information in a docstring, i.e.,
-
-```python
-import math
-from typing import Union
-
-
-def sqrt(x: Union[float, int]) -> Union[float, int]:
-    """
-    Return the square root of x.
-
-    :param x: A number
-    :returns: The square root of the given number
-    :raises ValueError: If the number is negative
-    """
-
-    return math.sqrt(x)
-```
-
-### JavaScript Testing
-
-We use [Jest](https://jestjs.io/) and [Enzyme](https://airbnb.io/enzyme/) to test Javascript. Tests can be run with:
+We use [Jest](https://jestjs.io/) and [Enzyme](https://airbnb.io/enzyme/) to test TypeScript/JavaScript. Tests can be run with:
 
 ```bash
-cd superset/assets
+cd superset-frontend
 npm run test
 ```
 
@@ -619,7 +684,7 @@ superset run --port 8081
 Run Cypress tests:
 
 ```bash
-cd superset/assets
+cd superset-frontend
 npm run build
 
 cd cypress-base
@@ -636,7 +701,7 @@ npm run cypress run -- --spec cypress/integration/dashboard/index.test.js --conf
 npm run cypress open
 ```
 
-See [`superset/assets/cypress_build.sh`](https://github.com/apache/incubator-superset/blob/master/superset/assets/cypress_build.sh).
+See [`superset-frontend/cypress_build.sh`](https://github.com/apache/incubator-superset/blob/master/superset-frontend/cypress_build.sh).
 
 ## Translating
 
@@ -655,11 +720,11 @@ At runtime, the `_` function will return the translation of the given
 string for the current language, or the given string itself
 if no translation is available.
 
-In JavaScript, the technique is similar:
+In TypeScript/JavaScript, the technique is similar:
 we import `t` (simple translation), `tn` (translation containing a number).
 
 ```javascript
-import { t, tn } from "@superset-ui/translation";
+import { t, tn } from '@superset-ui/translation';
 ```
 
 ### Enabling language selection
@@ -736,11 +801,33 @@ Then, [extract strings for the new language](#extracting-new-strings-for-transla
 
    This means it'll register MyDatasource and MyOtherDatasource in superset.my_models module in the source registry.
 
-### Creating a new visualization type
+### Improving visualizations
 
-Here's an example as a Github PR with comments that describe what the
-different sections of the code do:
-https://github.com/apache/incubator-superset/pull/3013
+Superset is working towards a plugin system where new visualizations can be installed as optional npm packages. To achieve this goal, we are not accepting pull requests for new community-contributed visualization types at the moment. However, bugfixes for current visualizations are welcome. To edit the frontend code for visualizations, you will have to check out a copy of [apache-superset/superset-ui](https://github.com/apache-superset/superset-ui):
+
+```bash
+git clone https://github.com/apache-superset/superset-ui.git
+cd superset-ui
+yarn
+yarn build
+```
+
+Then use `npm link` to create symlinks of the plugins/superset-ui packages you want to edit in `superset-frontend/node_modules`:
+
+```bash
+cd incubator-superset/superset-frontend
+npm link ../../superset-ui/plugins/[PLUGIN NAME]
+
+# Or to link all core superset-ui and plugin packages:
+# npm link ../../superset-ui/{packages,plugins}/*
+
+# Start developing
+npm run dev-server
+```
+
+When `superset-ui` packages are linked with `npm link`, the dev server will automatically load a package's source code from its `/src` directory, instead of the built modules in `lib/` or `esm/`.
+
+Note that every time you do `npm install`, you will lose the symlink(s) and may have to run `npm link` again.
 
 ### Adding a DB migration
 
@@ -838,12 +925,14 @@ To do this, you'll need to:
 - Configure a results backend, here's a local `FileSystemCache` example,
   not recommended for production,
   but perfect for testing (stores cache in `/tmp`)
+
   ```python
-  from werkzeug.contrib.cache import FileSystemCache
+  from cachelib.file import FileSystemCache
   RESULTS_BACKEND = FileSystemCache('/tmp/sqllab')
   ```
 
-* Start up a celery worker
+- Start up a celery worker
+
   ```shell script
   celery worker --app=superset.tasks.celery_app:app -Ofair
   ```
@@ -881,23 +970,18 @@ Note not all fields are correctly catagorized. The fields vary based on visualiz
 
 | Field                  | Type            | Notes                                 |
 | ---------------------- | --------------- | ------------------------------------- |
-| `date_filter`          | _N/A_           | _Deprecated?_                         |
-| `date_time_format`     | _N/A_           | _Deprecated?_                         |
 | `druid_time_origin`    | _string_        | The Druid **Origin** widget           |
 | `granularity`          | _string_        | The Druid **Time Granularity** widget |
 | `granularity_sqla`     | _string_        | The SQLA **Time Column** widget       |
 | `time_grain_sqla`      | _string_        | The SQLA **Time Grain** widget        |
 | `time_range`           | _string_        | The **Time range** widget             |
-| `time_range_endpoints` | _array(string)_ | Used by SIP-15 [HIDDEN]               |
 
 ### GROUP BY
 
 | Field                     | Type            | Notes                       |
 | ------------------------- | --------------- | --------------------------- |
-| `include_time`            | _boolean_       | The **Include Time** widget |
 | `metrics`                 | _array(string)_ | See Query section           |
 | `order_asc`               | -               | See Query section           |
-| `percent_metrics`         | -               | See Query section           |
 | `row_limit`               | -               | See Query section           |
 | `timeseries_limit_metric` | -               | See Query section           |
 
@@ -905,7 +989,6 @@ Note not all fields are correctly catagorized. The fields vary based on visualiz
 
 | Field           | Type            | Notes                   |
 | --------------- | --------------- | ----------------------- |
-| `all_columns`   | _array(string)_ | The **Columns** widget  |
 | `order_by_cols` | _array(string)_ | The **Ordering** widget |
 | `row_limit`     | -               | See Query section       |
 
@@ -921,90 +1004,37 @@ Note not all fields are correctly catagorized. The fields vary based on visualiz
 | Field             | Type     | Notes                                               |
 | ----------------- | -------- | --------------------------------------------------- |
 | `metric_2`        | -        | The **Right Axis Metric** widget. See Query section |
-| `y_axis_2_format` | _string_ | The **Right Axis Format** widget                    |
 
 ### Query
 
 | Field                                                                                                  | Type                                              | Notes                                             |
 | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------- | ------------------------------------------------- |
 | `adhoc_filters`                                                                                        | _array(object)_                                   | The **Filters** widget                            |
-| `all_columns_x`                                                                                        | _array(string)_                                   | The **Numeric Columns** widget                    |
 | `columns`                                                                                              | _array(string)_                                   | The **Breakdowns** widget                         |
-| `contribution`                                                                                         | _boolean_                                         | The **Contribution** widget                       |
 | `groupby`                                                                                              | _array(string)_                                   | The **Group by** or **Series** widget             |
 | `limit`                                                                                                | _number_                                          | The **Series Limit** widget                       |
-| `max_bubble_size`                                                                                      | _number_                                          | The **Max Bubble Size** widget                    |
 | `metric`<br>`metric_2`<br>`metrics`<br>`percent_mertics`<br>`secondary_metric`<br>`size`<br>`x`<br>`y` | _string_,_object_,_array(string)_,_array(object)_ | The metric(s) depending on the visualization type |
 | `order_asc`                                                                                            | _boolean_                                         | The **Sort Descending** widget                    |
 | `row_limit`                                                                                            | _number_                                          | The **Row limit** widget                          |
 | `timeseries_limit_metric`                                                                              | _object_                                          | The **Sort By** widget                            |
 
-The `metric` (or equivalent) and `timeseries_limit_metric` fields are all composed of either metric names or the JSON representation of the `AdhocMetric` JavaScript type. The `adhoc_filters` is composed of the JSON represent of the `AdhocFilter` JavaScript type (which can comprise of columns or metrics depending on whether it is a WHERE or HAVING clause). The `all_columns`, `all_columns_x`, `columns`, `groupby`, and `order_by_cols` fields all represent column names.
-
-### Filters Configuration
-
-| Field            | Type          | Notes                             |
-| ---------------- | ------------- | --------------------------------- |
-| `filter_configs` | array(object) | The filter-box **Filters** widget |
-
-The filter-box configuration references column names (via the `column` key) and optionally metric names (via the `metric` key) if sorting is defined.
-
-### Options
-
-| Field                  | Type      | Notes                                |
-| ---------------------- | --------- | ------------------------------------ |
-| `compare_lag`          | _number_  | The **Comparison Period Lag** widget |
-| `compare_suffix`       | _string_  | The **Comparison suffix** widget     |
-| `show_trend_line`      | _boolean_ | The **Show Trend Line** widget       |
-| `start_y_axis_at_zero` | _boolean_ | The **Start y-axis at 0** widget     |
+The `metric` (or equivalent) and `timeseries_limit_metric` fields are all composed of either metric names or the JSON representation of the `AdhocMetric` TypeScript type. The `adhoc_filters` is composed of the JSON represent of the `AdhocFilter` TypeScript type (which can comprise of columns or metrics depending on whether it is a WHERE or HAVING clause). The `all_columns`, `all_columns_x`, `columns`, `groupby`, and `order_by_cols` fields all represent column names.
 
 ### Chart Options
 
 | Field                 | Type      | Notes                                            |
 | --------------------- | --------- | ------------------------------------------------ |
 | `color_picker`        | _object_  | The **Fixed Color** widget                       |
-| `donut`               | _boolean_ | The **Donut** widget                             |
-| `global_opacity`      | _number_  | The **Opacity** widget                           |
-| `header_font_size`    | _number_  | The **Big Number Font Size** widget (or similar) |
 | `label_colors`        | _object_  | The **Color Scheme** widget                      |
-| `labels_outside`      | _boolean_ | The **Put labels outside** widget                |
-| `line_interpolation`  | _string_  | The **Line Style** widget                        |
-| `link_length`         | _number_  | The **No of Bins** widget                        |
 | `normalized`          | _boolean_ | The **Normalized** widget                        |
-| `number_format`       | _string_  | The **Number format** widget                     |
-| `pie_label_type`      | _string_  | [HIDDEN]                                         |
-| `rich_tooltip`        | _boolean_ | The **Rich Tooltip** widget                      |
-| `send_time_range`     | _boolean_ | The **Show Markers** widget                      |
-| `show_brush`          | _string_  | The **Show Range Filter** widget                 |
-| `show_legend`         | _boolean_ | The **Legend** widget                            |
-| `show_markers`        | _string_  | The **Show Markers** widget                      |
-| `subheader_font_size` | _number_  | The **Subheader Font Size** widget               |
-
-### X Axis
-
-| Field                | Type      | Notes                        |
-| -------------------- | --------- | ---------------------------- |
-| `bottom_margin`      | _string_  | The **Bottom Margin** widget |
-| `x_axis_format`      | _string_  | The **X Axis Format** widget |
-| `x_axis_label`       | _string_  | The **X Axis Label** widget  |
-| `x_axis_showminmax`  | _boolean_ | The **X bounds** widget      |
-| `x_axis_time_format` | _N/A_     | _Deprecated?_                |
-| `x_log_scale`        | _N/A_     | _Deprecated?_                |
-| `x_ticks_layout`     | _string_  | The **X Tick Layout** widget |
 
 ### Y Axis
 
 | Field               | Type            | Notes                        |
 | ------------------- | --------------- | ---------------------------- |
-| `left_margin`       | _number_        | The **Left Margin** widget   |
 | `y_axis_2_label`    | _N/A_           | _Deprecated?_                |
-| `y_axis_bounds`     | _array(string)_ | The **Y Axis Bounds** widget |
 | `y_axis_format`     | _string_        | The **Y Axis Format** widget |
-| `y_axis_label`      | _string_        | The **Y Axis Label** widget  |
-| `y_axis_showminmax` | _boolean_       | The **Y bounds** widget      |
 | `y_axis_zero`       | _N/A_           | _Deprecated?_                |
-| `y_log_scale`       | _boolean_       | The **Y Log Scale** widget   |
-| `yscale_interval`   | _N/A_           | _Deprecated?_                |
 
 Note the `y_axis_format` is defined under various section for some charts.
 
@@ -1013,50 +1043,22 @@ Note the `y_axis_format` is defined under various section for some charts.
 | Field          | Type     | Notes        |
 | -------------- | -------- | ------------ |
 | `color_scheme` | _string_ |              |
-| `slice_id`     | _number_ | The slice ID |
-| `url_params`   | _object_ |              |
 
 ### Unclassified
 
 | Field                           | Type  | Notes |
 | ------------------------------- | ----- | ----- |
 | `add_to_dash`                   | _N/A_ |       |
-| `align_pn`                      | _N/A_ |       |
-| `all_columns_y`                 | _N/A_ |       |
-| `annotation_layers`             | _N/A_ |       |
-| `autozoom`                      | _N/A_ |       |
-| `bar_stacked`                   | _N/A_ |       |
-| `cache_timeout`                 | _N/A_ |       |
-| `canvas_image_rendering`        | _N/A_ |       |
-| `cell_padding`                  | _N/A_ |       |
-| `cell_radius`                   | _N/A_ |       |
-| `cell_size`                     | _N/A_ |       |
-| `charge`                        | _N/A_ |       |
-| `clustering_radius`             | _N/A_ |       |
 | `code`                          | _N/A_ |       |
 | `collapsed_fieldsets`           | _N/A_ |       |
-| `color_pn`                      | _N/A_ |       |
-| `column_collection`             | _N/A_ |       |
-| `combine_metric`                | _N/A_ |       |
 | `comparison type`               | _N/A_ |       |
-| `contribution`                  | _N/A_ |       |
 | `country_fieldtype`             | _N/A_ |       |
-| `date_filter`                   | _N/A_ |       |
-| `deck_slices`                   | _N/A_ |       |
 | `default_filters`               | _N/A_ |       |
-| `dimension`                     | _N/A_ |       |
-| `domain_granularity`            | _N/A_ |       |
-| `end_spatial`                   | _N/A_ |       |
 | `entity`                        | _N/A_ |       |
-| `equal_date_size`               | _N/A_ |       |
 | `expanded_slices`               | _N/A_ |       |
 | `extra_filters`                 | _N/A_ |       |
-| `extruded`                      | _N/A_ |       |
-| `fill_color_picker`             | _N/A_ |       |
-| `filled`                        | _N/A_ |       |
 | `filter_immune_slice_fields`    | _N/A_ |       |
 | `filter_immune_slices`          | _N/A_ |       |
-| `filter_nulls`                  | _N/A_ |       |
 | `flt_col_0`                     | _N/A_ |       |
 | `flt_col_1`                     | _N/A_ |       |
 | `flt_eq_0`                      | _N/A_ |       |
@@ -1064,117 +1066,24 @@ Note the `y_axis_format` is defined under various section for some charts.
 | `flt_op_0`                      | _N/A_ |       |
 | `flt_op_1`                      | _N/A_ |       |
 | `goto_dash`                     | _N/A_ |       |
-| `grid_size`                     | _N/A_ |       |
-| `horizon_color_scale`           | _N/A_ |       |
 | `import_time`                   | _N/A_ |       |
-| `include_search`                | _N/A_ |       |
-| `include_series`                | _N/A_ |       |
-| `instant_filtering`             | _N/A_ |       |
-| `js_agg_function`               | _N/A_ |       |
-| `js_columns`                    | _N/A_ |       |
 | `label`                         | _N/A_ |       |
-| `labels_outside`                | _N/A_ |       |
-| `legend_position`               | _N/A_ |       |
-| `line_charts`                   | _N/A_ |       |
-| `line_charts_2`                 | _N/A_ |       |
-| `line_column`                   | _N/A_ |       |
-| `line_type`                     | _N/A_ |       |
-| `line_width`                    | _N/A_ |       |
 | `linear_color_scheme`           | _N/A_ |       |
-| `log_scale`                     | _N/A_ |       |
-| `mapbox_color`                  | _N/A_ |       |
-| `mapbox_label`                  | _N/A_ |       |
-| `mapbox_style`                  | _N/A_ |       |
-| `marker_labels`                 | _N/A_ |       |
-| `marker_line_labels`            | _N/A_ |       |
-| `marker_lines`                  | _N/A_ |       |
-| `markers`                       | _N/A_ |       |
-| `markup_type`                   | _N/A_ |       |
-| `max_radius`                    | _N/A_ |       |
-| `min_leaf_node_event_count`     | _N/A_ |       |
-| `min_periods`                   | _N/A_ |       |
-| `min_radius`                    | _N/A_ |       |
-| `multiplier`                    | _N/A_ |       |
 | `new_dashboard_name`            | _N/A_ |       |
 | `new_slice_name`                | _N/A_ |       |
-| `normalize_across`              | _N/A_ |       |
-| `num_buckets`                   | _N/A_ |       |
 | `num_period_compare`            | _N/A_ |       |
-| `order_bars`                    | _N/A_ |       |
-| `order_by_entity`               | _N/A_ |       |
-| `order_desc`                    | _N/A_ |       |
-| `page_length`                   | _N/A_ |       |
-| `pandas_aggfunc`                | _N/A_ |       |
-| `partition_limit`               | _N/A_ |       |
-| `partition_threshold`           | _N/A_ |       |
 | `period_ratio_type`             | _N/A_ |       |
 | `perm`                          | _N/A_ |       |
-| `pivot_margins`                 | _N/A_ |       |
-| `point_radius`                  | _N/A_ |       |
-| `point_radius_fixed`            | _N/A_ |       |
-| `point_radius_unit`             | _N/A_ |       |
-| `point_unit`                    | _N/A_ |       |
-| `prefix_metric_with_slice_name` | _N/A_ |       |
-| `range_labels`                  | _N/A_ |       |
-| `ranges`                        | _N/A_ |       |
 | `rdo_save`                      | _N/A_ |       |
-| `reduce_x_ticks`                | _N/A_ |       |
 | `refresh_frequency`             | _N/A_ |       |
 | `remote_id`                     | _N/A_ |       |
-| `render_while_dragging`         | _N/A_ |       |
 | `resample_fillmethod`           | _N/A_ |       |
 | `resample_how`                  | _N/A_ |       |
-| `resample_method`               | _N/A_ |       |
-| `resample_rule`                 | _N/A_ |       |
-| `reverse_long_lat`              | _N/A_ |       |
-| `rolling_periods`               | _N/A_ |       |
-| `rolling_type`                  | _N/A_ |       |
 | `rose_area_proportion`          | _N/A_ |       |
-| `rotation`                      | _N/A_ |       |
 | `save_to_dashboard_id`          | _N/A_ |       |
 | `schema`                        | _N/A_ |       |
-| `select_country`                | _N/A_ |       |
 | `series`                        | _N/A_ |       |
-| `series_height`                 | _N/A_ |       |
-| `show_bar_value`                | _N/A_ |       |
-| `show_brush`                    | _N/A_ |       |
 | `show_bubbles`                  | _N/A_ |       |
-| `show_controls`                 | _N/A_ |       |
-| `show_datatable`                | _N/A_ |       |
-| `show_druid_time_granularity`   | _N/A_ |       |
-| `show_druid_time_origin`        | _N/A_ |       |
-| `show_labels`                   | _N/A_ |       |
-| `show_metric_name`              | _N/A_ |       |
-| `show_perc`                     | _N/A_ |       |
-| `show_sqla_time_column`         | _N/A_ |       |
-| `show_sqla_time_granularity`    | _N/A_ |       |
-| `show_values`                   | _N/A_ |       |
-| `size_from`                     | _N/A_ |       |
-| `size_to`                       | _N/A_ |       |
 | `slice_name`                    | _N/A_ |       |
-| `sort_x_axis`                   | _N/A_ |       |
-| `sort_y_axis`                   | _N/A_ |       |
-| `spatial`                       | _N/A_ |       |
-| `stacked_style`                 | _N/A_ |       |
-| `start_spatial`                 | _N/A_ |       |
-| `steps`                         | _N/A_ |       |
-| `stroke_color_picker`           | _N/A_ |       |
-| `stroke_width`                  | _N/A_ |       |
-| `stroked`                       | _N/A_ |       |
-| `subdomain_granularity`         | _N/A_ |       |
-| `subheader`                     | _N/A_ |       |
-| `table_filter`                  | _N/A_ |       |
-| `table_timestamp_format`        | _N/A_ |       |
-| `time_compare`                  | _N/A_ |       |
-| `time_series_option`            | _N/A_ |       |
 | `timed_refresh_immune_slices`   | _N/A_ |       |
-| `toggle_polygons`               | _N/A_ |       |
-| `transpose_pivot`               | _N/A_ |       |
-| `treemap_ratio`                 | _N/A_ |       |
-| `url`                           | _N/A_ |       |
 | `userid`                        | _N/A_ |       |
-| `viewport`                      | _N/A_ |       |
-| `viewport_latitude`             | _N/A_ |       |
-| `viewport_longitude`            | _N/A_ |       |
-| `viewport_zoom`                 | _N/A_ |       |
-| `whisker_options`               | _N/A_ |       |

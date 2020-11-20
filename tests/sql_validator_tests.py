@@ -14,12 +14,14 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+# isort:skip_file
 """Unit tests for Sql Lab"""
 import unittest
 from unittest.mock import MagicMock, patch
 
 from pyhive.exc import DatabaseError
 
+import tests.test_app
 from superset import app
 from superset.sql_validators import SQLValidationAnnotation
 from superset.sql_validators.base import BaseSQLValidator
@@ -40,7 +42,7 @@ PRESTO_TEST_FEATURE_FLAGS = {
 }
 
 
-class SqlValidatorEndpointTests(SupersetTestCase):
+class TestSqlValidatorEndpoint(SupersetTestCase):
     """Testing for Sql Lab querytext validation endpoint"""
 
     def tearDown(self):
@@ -112,7 +114,7 @@ class SqlValidatorEndpointTests(SupersetTestCase):
         self.assertIn("Kaboom!", resp["error"])
 
 
-class BaseValidatorTests(SupersetTestCase):
+class TestBaseValidator(SupersetTestCase):
     """Testing for the base sql validator"""
 
     def setUp(self):
@@ -123,7 +125,7 @@ class BaseValidatorTests(SupersetTestCase):
             self.validator.validate(None, None, None)
 
 
-class PrestoValidatorTests(SupersetTestCase):
+class TestPrestoValidator(SupersetTestCase):
     """Testing for the prestodb sql validator"""
 
     def setUp(self):

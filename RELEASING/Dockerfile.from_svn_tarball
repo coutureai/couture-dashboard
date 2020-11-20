@@ -35,7 +35,7 @@ RUN apt-get install -y build-essential libssl-dev \
 # Install nodejs for custom build
 # https://superset.incubator.apache.org/installation.html#making-your-own-build
 # https://nodejs.org/en/download/package-manager/
-RUN curl -sL https://deb.nodesource.com/setup_10.x | bash - \
+RUN curl -sL https://deb.nodesource.com/setup_12.x | bash - \
     && apt-get install -y nodejs
 
 RUN mkdir -p /home/superset
@@ -49,7 +49,7 @@ RUN svn co https://dist.apache.org/repos/dist/dev/incubator/superset/$VERSION ./
 RUN tar -xvf *.tar.gz
 WORKDIR apache-superset-incubating-$VERSION
 
-RUN cd superset/assets \
+RUN cd superset-frontend \
     && npm ci \
     && npm run build \
     && rm -rf node_modules

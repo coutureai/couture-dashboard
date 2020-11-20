@@ -14,26 +14,36 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+# isort:skip_file
 import unittest
 import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+import hashlib
+import json
+import os
+import re
 from unittest.mock import Mock, patch
 
 import numpy
-from flask import Flask
+from flask import Flask, g
 from flask_caching import Cache
+import marshmallow
 from sqlalchemy.exc import ArgumentError
 
+import tests.test_app
 from superset import app, db, security_manager
-from superset.exceptions import SupersetException
-from superset.models.core import Database
+from superset.exceptions import CertificateException, SupersetException
+from superset.models.core import Database, Log
 from superset.utils.cache_manager import CacheManager
 from superset.utils.core import (
     base_json_conv,
     convert_legacy_filters_into_adhoc,
-    datetime_f,
+    create_ssl_cert_file,
     format_timedelta,
+    get_form_data_token,
+    get_iterable,
+    get_email_address_list,
     get_or_create_db,
     get_since_until,
     get_stacktrace,
@@ -43,6 +53,7 @@ from superset.utils.core import (
     memoized,
     merge_extra_filters,
     merge_request_params,
+    parse_ssl_cert,
     parse_human_timedelta,
     parse_js_uri_path_item,
     parse_past_timedelta,
@@ -52,8 +63,15 @@ from superset.utils.core import (
     zlib_compress,
     zlib_decompress,
 )
-from superset.views.utils import get_time_range_endpoints
+from superset.utils import schema
+from superset.views.utils import (
+    build_extra_filters,
+    get_form_data,
+    get_time_range_endpoints,
+)
 from tests.base_tests import SupersetTestCase
+
+from .fixtures.certificates import ssl_certificate
 
 
 def mock_parse_human_datetime(s):
@@ -94,7 +112,7 @@ def mock_to_adhoc(filt, expressionType="SIMPLE", clause="where"):
     return result
 
 
-class UtilsTestCase(SupersetTestCase):
+class TestUtils(SupersetTestCase):
     def test_json_int_dttm_ser(self):
         dttm = datetime(2020, 1, 1)
         ts = 1577836800000.0
@@ -541,20 +559,9 @@ class UtilsTestCase(SupersetTestCase):
         merge_request_params(form_data, url_params)
         self.assertIn("url_params", form_data.keys())
         self.assertIn("abc", form_data["url_params"])
-        self.assertEquals(
+        self.assertEqual(
             url_params["dashboard_ids"], form_data["url_params"]["dashboard_ids"]
         )
-
-    def test_datetime_f(self):
-        self.assertEqual(
-            datetime_f(datetime(1990, 9, 21, 19, 11, 19, 626096)),
-            "<nobr>1990-09-21T19:11:19.626096</nobr>",
-        )
-        self.assertEqual(len(datetime_f(datetime.now())), 28)
-        self.assertEqual(datetime_f(None), "<nobr>None</nobr>")
-        iso = datetime.now().isoformat()[:10].split("-")
-        [a, b, c] = [int(v) for v in iso]
-        self.assertEqual(datetime_f(datetime(a, b, c)), "<nobr>00:00:00</nobr>")
 
     def test_format_timedelta(self):
         self.assertEqual(format_timedelta(timedelta(0)), "0:00:00")
@@ -579,6 +586,8 @@ class UtilsTestCase(SupersetTestCase):
         self.assertEqual(jsonObj.process_result_value(val, "dialect"), obj)
 
     def test_validate_json(self):
+        valid = '{"a": 5, "b": [1, 5, ["g", "h"]]}'
+        self.assertIsNone(validate_json(valid))
         invalid = '{"a": 5, "b": [1, 5, ["g", "h]]}'
         with self.assertRaises(SupersetException):
             validate_json(invalid)
@@ -822,15 +831,10 @@ class UtilsTestCase(SupersetTestCase):
         self.assertIsNone(parse_js_uri_path_item(None))
         self.assertIsNotNone(parse_js_uri_path_item("item"))
 
-    def test_setup_cache_no_config(self):
-        app = Flask(__name__)
-        cache_config = None
-        self.assertIsNone(CacheManager._setup_cache(app, cache_config))
-
     def test_setup_cache_null_config(self):
         app = Flask(__name__)
         cache_config = {"CACHE_TYPE": "null"}
-        self.assertIsNone(CacheManager._setup_cache(app, cache_config))
+        assert isinstance(CacheManager._setup_cache(app, cache_config), Cache)
 
     def test_setup_cache_standard_config(self):
         app = Flask(__name__)
@@ -953,3 +957,418 @@ class UtilsTestCase(SupersetTestCase):
                 get_time_range_endpoints(form_data={"datasource": "1__table"}, slc=slc),
                 (TimeRangeEndpoint.INCLUSIVE, TimeRangeEndpoint.EXCLUSIVE),
             )
+
+    def test_get_iterable(self):
+        self.assertListEqual(get_iterable(123), [123])
+        self.assertListEqual(get_iterable([123]), [123])
+        self.assertListEqual(get_iterable("foo"), ["foo"])
+
+    def test_build_extra_filters(self):
+        layout = {
+            "CHART-2ee52f30": {
+                "children": [],
+                "id": "CHART-2ee52f30",
+                "meta": {
+                    "chartId": 1020,
+                    "height": 38,
+                    "sliceName": "Chart 927",
+                    "width": 6,
+                },
+                "parents": [
+                    "ROOT_ID",
+                    "TABS-Qq4sdkANSY",
+                    "TAB-VrhTX2WUlO",
+                    "TABS-N1zN4CIZP0",
+                    "TAB-asWdJzKmTN",
+                    "ROW-i_sG4ccXE",
+                ],
+                "type": "CHART",
+            },
+            "CHART-36bfc934": {
+                "children": [],
+                "id": "CHART-36bfc934",
+                "meta": {
+                    "chartId": 1018,
+                    "height": 26,
+                    "sliceName": "Region Filter",
+                    "width": 2,
+                },
+                "parents": [
+                    "ROOT_ID",
+                    "TABS-Qq4sdkANSY",
+                    "TAB-W62P60D88",
+                    "ROW-1e064e3c",
+                    "COLUMN-fe3914b8",
+                ],
+                "type": "CHART",
+            },
+            "CHART-E_y2cuNHTv": {
+                "children": [],
+                "id": "CHART-E_y2cuNHTv",
+                "meta": {"chartId": 998, "height": 55, "sliceName": "MAP", "width": 6},
+                "parents": [
+                    "ROOT_ID",
+                    "TABS-Qq4sdkANSY",
+                    "TAB-W62P60D88",
+                    "ROW-1e064e3c",
+                ],
+                "type": "CHART",
+            },
+            "CHART-JNxDOsAfEb": {
+                "children": [],
+                "id": "CHART-JNxDOsAfEb",
+                "meta": {
+                    "chartId": 1015,
+                    "height": 27,
+                    "sliceName": "Population",
+                    "width": 4,
+                },
+                "parents": [
+                    "ROOT_ID",
+                    "TABS-Qq4sdkANSY",
+                    "TAB-W62P60D88",
+                    "ROW-1e064e3c",
+                    "COLUMN-fe3914b8",
+                ],
+                "type": "CHART",
+            },
+            "CHART-KoOwqalV80": {
+                "children": [],
+                "id": "CHART-KoOwqalV80",
+                "meta": {
+                    "chartId": 927,
+                    "height": 20,
+                    "sliceName": "Chart 927",
+                    "width": 4,
+                },
+                "parents": [
+                    "ROOT_ID",
+                    "TABS-Qq4sdkANSY",
+                    "TAB-VrhTX2WUlO",
+                    "TABS-N1zN4CIZP0",
+                    "TAB-cHNWcBZC9",
+                    "ROW-9b9vrWKPY",
+                ],
+                "type": "CHART",
+            },
+            "CHART-YCQAPVK7mQ": {
+                "children": [],
+                "id": "CHART-YCQAPVK7mQ",
+                "meta": {
+                    "chartId": 1023,
+                    "height": 38,
+                    "sliceName": "World's Population",
+                    "width": 4,
+                },
+                "parents": [
+                    "ROOT_ID",
+                    "TABS-Qq4sdkANSY",
+                    "TAB-VrhTX2WUlO",
+                    "ROW-UfxFT36oV5",
+                ],
+                "type": "CHART",
+            },
+            "COLUMN-fe3914b8": {
+                "children": ["CHART-36bfc934", "CHART-JNxDOsAfEb"],
+                "id": "COLUMN-fe3914b8",
+                "meta": {"background": "BACKGROUND_TRANSPARENT", "width": 6},
+                "parents": [
+                    "ROOT_ID",
+                    "TABS-Qq4sdkANSY",
+                    "TAB-W62P60D88",
+                    "ROW-1e064e3c",
+                ],
+                "type": "COLUMN",
+            },
+            "DASHBOARD_VERSION_KEY": "v2",
+            "GRID_ID": {
+                "children": [],
+                "id": "GRID_ID",
+                "parents": ["ROOT_ID"],
+                "type": "GRID",
+            },
+            "HEADER_ID": {
+                "id": "HEADER_ID",
+                "meta": {"text": "Test warmup 1023"},
+                "type": "HEADER",
+            },
+            "ROOT_ID": {
+                "children": ["TABS-Qq4sdkANSY"],
+                "id": "ROOT_ID",
+                "type": "ROOT",
+            },
+            "ROW-1e064e3c": {
+                "children": ["COLUMN-fe3914b8", "CHART-E_y2cuNHTv"],
+                "id": "ROW-1e064e3c",
+                "meta": {"background": "BACKGROUND_TRANSPARENT"},
+                "parents": ["ROOT_ID", "TABS-Qq4sdkANSY", "TAB-W62P60D88"],
+                "type": "ROW",
+            },
+            "ROW-9b9vrWKPY": {
+                "children": ["CHART-KoOwqalV80"],
+                "id": "ROW-9b9vrWKPY",
+                "meta": {"background": "BACKGROUND_TRANSPARENT"},
+                "parents": [
+                    "ROOT_ID",
+                    "TABS-Qq4sdkANSY",
+                    "TAB-VrhTX2WUlO",
+                    "TABS-N1zN4CIZP0",
+                    "TAB-cHNWcBZC9",
+                ],
+                "type": "ROW",
+            },
+            "ROW-UfxFT36oV5": {
+                "children": ["CHART-YCQAPVK7mQ"],
+                "id": "ROW-UfxFT36oV5",
+                "meta": {"background": "BACKGROUND_TRANSPARENT"},
+                "parents": ["ROOT_ID", "TABS-Qq4sdkANSY", "TAB-VrhTX2WUlO"],
+                "type": "ROW",
+            },
+            "ROW-i_sG4ccXE": {
+                "children": ["CHART-2ee52f30"],
+                "id": "ROW-i_sG4ccXE",
+                "meta": {"background": "BACKGROUND_TRANSPARENT"},
+                "parents": [
+                    "ROOT_ID",
+                    "TABS-Qq4sdkANSY",
+                    "TAB-VrhTX2WUlO",
+                    "TABS-N1zN4CIZP0",
+                    "TAB-asWdJzKmTN",
+                ],
+                "type": "ROW",
+            },
+            "TAB-VrhTX2WUlO": {
+                "children": ["ROW-UfxFT36oV5", "TABS-N1zN4CIZP0"],
+                "id": "TAB-VrhTX2WUlO",
+                "meta": {"text": "New Tab"},
+                "parents": ["ROOT_ID", "TABS-Qq4sdkANSY"],
+                "type": "TAB",
+            },
+            "TAB-W62P60D88": {
+                "children": ["ROW-1e064e3c"],
+                "id": "TAB-W62P60D88",
+                "meta": {"text": "Tab 2"},
+                "parents": ["ROOT_ID", "TABS-Qq4sdkANSY"],
+                "type": "TAB",
+            },
+            "TAB-asWdJzKmTN": {
+                "children": ["ROW-i_sG4ccXE"],
+                "id": "TAB-asWdJzKmTN",
+                "meta": {"text": "nested tab 1"},
+                "parents": [
+                    "ROOT_ID",
+                    "TABS-Qq4sdkANSY",
+                    "TAB-VrhTX2WUlO",
+                    "TABS-N1zN4CIZP0",
+                ],
+                "type": "TAB",
+            },
+            "TAB-cHNWcBZC9": {
+                "children": ["ROW-9b9vrWKPY"],
+                "id": "TAB-cHNWcBZC9",
+                "meta": {"text": "test2d tab 2"},
+                "parents": [
+                    "ROOT_ID",
+                    "TABS-Qq4sdkANSY",
+                    "TAB-VrhTX2WUlO",
+                    "TABS-N1zN4CIZP0",
+                ],
+                "type": "TAB",
+            },
+            "TABS-N1zN4CIZP0": {
+                "children": ["TAB-asWdJzKmTN", "TAB-cHNWcBZC9"],
+                "id": "TABS-N1zN4CIZP0",
+                "meta": {},
+                "parents": ["ROOT_ID", "TABS-Qq4sdkANSY", "TAB-VrhTX2WUlO"],
+                "type": "TABS",
+            },
+            "TABS-Qq4sdkANSY": {
+                "children": ["TAB-VrhTX2WUlO", "TAB-W62P60D88"],
+                "id": "TABS-Qq4sdkANSY",
+                "meta": {},
+                "parents": ["ROOT_ID"],
+                "type": "TABS",
+            },
+        }
+        filter_scopes = {
+            "1018": {
+                "region": {"scope": ["TAB-W62P60D88"], "immune": [998]},
+                "country_name": {"scope": ["ROOT_ID"], "immune": [927, 998]},
+            }
+        }
+        default_filters = {
+            "1018": {"region": ["North America"], "country_name": ["United States"]}
+        }
+
+        # immune to all filters
+        slice_id = 998
+        extra_filters = build_extra_filters(
+            layout, filter_scopes, default_filters, slice_id
+        )
+        expected = []
+        self.assertEqual(extra_filters, expected)
+
+        # in scope
+        slice_id = 1015
+        extra_filters = build_extra_filters(
+            layout, filter_scopes, default_filters, slice_id
+        )
+        expected = [
+            {"col": "region", "op": "in", "val": ["North America"]},
+            {"col": "country_name", "op": "in", "val": ["United States"]},
+        ]
+        self.assertEqual(extra_filters, expected)
+
+        # not in scope
+        slice_id = 927
+        extra_filters = build_extra_filters(
+            layout, filter_scopes, default_filters, slice_id
+        )
+        expected = []
+        self.assertEqual(extra_filters, expected)
+
+    def test_ssl_certificate_parse(self):
+        parsed_certificate = parse_ssl_cert(ssl_certificate)
+        self.assertEqual(parsed_certificate.serial_number, 12355228710836649848)
+        self.assertRaises(CertificateException, parse_ssl_cert, "abc" + ssl_certificate)
+
+    def test_ssl_certificate_file_creation(self):
+        path = create_ssl_cert_file(ssl_certificate)
+        expected_filename = hashlib.md5(ssl_certificate.encode("utf-8")).hexdigest()
+        self.assertIn(expected_filename, path)
+        self.assertTrue(os.path.exists(path))
+
+    def test_get_email_address_list(self):
+        self.assertEqual(get_email_address_list("a@a"), ["a@a"])
+        self.assertEqual(get_email_address_list(" a@a "), ["a@a"])
+        self.assertEqual(get_email_address_list("a@a\n"), ["a@a"])
+        self.assertEqual(get_email_address_list(",a@a;"), ["a@a"])
+        self.assertEqual(
+            get_email_address_list(",a@a; b@b c@c a-c@c; d@d, f@f"),
+            ["a@a", "b@b", "c@c", "a-c@c", "d@d", "f@f"],
+        )
+
+    def test_get_form_data_default(self) -> None:
+        with app.test_request_context():
+            form_data, slc = get_form_data()
+
+            self.assertEqual(
+                form_data,
+                {"time_range_endpoints": get_time_range_endpoints(form_data={}),},
+            )
+
+            self.assertEqual(slc, None)
+
+    def test_get_form_data_request_args(self) -> None:
+        with app.test_request_context(
+            query_string={"form_data": json.dumps({"foo": "bar"})}
+        ):
+            form_data, slc = get_form_data()
+
+            self.assertEqual(
+                form_data,
+                {
+                    "foo": "bar",
+                    "time_range_endpoints": get_time_range_endpoints(form_data={}),
+                },
+            )
+
+            self.assertEqual(slc, None)
+
+    def test_get_form_data_request_form(self) -> None:
+        with app.test_request_context(data={"form_data": json.dumps({"foo": "bar"})}):
+            form_data, slc = get_form_data()
+
+            self.assertEqual(
+                form_data,
+                {
+                    "foo": "bar",
+                    "time_range_endpoints": get_time_range_endpoints(form_data={}),
+                },
+            )
+
+            self.assertEqual(slc, None)
+
+    def test_get_form_data_request_args_and_form(self) -> None:
+        with app.test_request_context(
+            data={"form_data": json.dumps({"foo": "bar"})},
+            query_string={"form_data": json.dumps({"baz": "bar"})},
+        ):
+            form_data, slc = get_form_data()
+
+            self.assertEqual(
+                form_data,
+                {
+                    "baz": "bar",
+                    "foo": "bar",
+                    "time_range_endpoints": get_time_range_endpoints(form_data={}),
+                },
+            )
+
+            self.assertEqual(slc, None)
+
+    def test_get_form_data_globals(self) -> None:
+        with app.test_request_context():
+            g.form_data = {"foo": "bar"}
+            form_data, slc = get_form_data()
+            delattr(g, "form_data")
+
+            self.assertEqual(
+                form_data,
+                {
+                    "foo": "bar",
+                    "time_range_endpoints": get_time_range_endpoints(form_data={}),
+                },
+            )
+
+            self.assertEqual(slc, None)
+
+    def test_log_this(self) -> None:
+        # TODO: Add additional scenarios.
+        self.login(username="admin")
+        slc = self.get_slice("Girls", db.session)
+        dashboard_id = 1
+
+        resp = self.get_json_resp(
+            f"/superset/explore_json/{slc.datasource_type}/{slc.datasource_id}/"
+            + f'?form_data={{"slice_id": {slc.id}}}&dashboard_id={dashboard_id}',
+            {"form_data": json.dumps(slc.viz.form_data)},
+        )
+
+        record = (
+            db.session.query(Log)
+            .filter_by(action="explore_json", slice_id=slc.id)
+            .order_by(Log.dttm.desc())
+            .first()
+        )
+
+        self.assertEqual(record.dashboard_id, dashboard_id)
+        self.assertEqual(json.loads(record.json)["dashboard_id"], str(dashboard_id))
+        self.assertEqual(json.loads(record.json)["form_data"]["slice_id"], slc.id)
+
+        self.assertEqual(
+            json.loads(record.json)["form_data"]["viz_type"],
+            slc.viz.form_data["viz_type"],
+        )
+
+    def test_schema_validate_json(self):
+        valid = '{"a": 5, "b": [1, 5, ["g", "h"]]}'
+        self.assertIsNone(schema.validate_json(valid))
+        invalid = '{"a": 5, "b": [1, 5, ["g", "h]]}'
+        self.assertRaises(marshmallow.ValidationError, schema.validate_json, invalid)
+
+    def test_schema_one_of_case_insensitive(self):
+        validator = schema.OneOfCaseInsensitive(choices=[1, 2, 3, "FoO", "BAR", "baz"])
+        self.assertEqual(1, validator(1))
+        self.assertEqual(2, validator(2))
+        self.assertEqual("FoO", validator("FoO"))
+        self.assertEqual("FOO", validator("FOO"))
+        self.assertEqual("bar", validator("bar"))
+        self.assertEqual("BaZ", validator("BaZ"))
+        self.assertRaises(marshmallow.ValidationError, validator, "qwerty")
+        self.assertRaises(marshmallow.ValidationError, validator, 4)
+
+    def test_get_form_data_token(self):
+        assert get_form_data_token({"token": "token_abcdefg1"}) == "token_abcdefg1"
+        generated_token = get_form_data_token({})
+        assert re.match(r"^token_[a-z0-9]{8}$", generated_token) is not None

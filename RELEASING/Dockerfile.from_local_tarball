@@ -35,7 +35,7 @@ RUN apt-get install -y build-essential libssl-dev \
 # Install nodejs for custom build
 # https://superset.incubator.apache.org/installation.html#making-your-own-build
 # https://nodejs.org/en/download/package-manager/
-RUN curl -sL https://deb.nodesource.com/setup_10.x | bash - \
+RUN curl -sL https://deb.nodesource.com/setup_12.x | bash - \
     && apt-get install -y nodejs
 
 RUN mkdir -p /home/superset
@@ -48,7 +48,7 @@ ARG SUPERSET_RELEASE_RC_TARBALL
 # Can fetch source from svn or copy tarball from local mounted directory
 COPY $SUPERSET_RELEASE_RC_TARBALL ./
 RUN tar -xvf *.tar.gz
-WORKDIR /home/superset/apache-superset-incubating-$VERSION/superset/assets
+WORKDIR /home/superset/apache-superset-incubating-$VERSION/superset-frontend
 
 RUN npm ci \
     && npm run build \

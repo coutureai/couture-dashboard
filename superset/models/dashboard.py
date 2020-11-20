@@ -36,14 +36,22 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.engine.base import Connection
 from sqlalchemy.orm import relationship, sessionmaker, subqueryload
+from sqlalchemy.orm.mapper import Mapper
 
 from superset import app, ConnectorRegistry, db, is_feature_enabled, security_manager
 from superset.models.helpers import AuditMixinNullable, ImportMixin
-from superset.models.slice import Slice as Slice
+from superset.models.slice import Slice
 from superset.models.tags import DashboardUpdater
 from superset.models.user_attributes import UserAttribute
+from superset.tasks.thumbnails import cache_dashboard_thumbnail
 from superset.utils import core as utils
+from superset.utils.dashboard_filter_scopes_converter import (
+    convert_filter_scopes,
+    copy_filter_scopes,
+)
+from superset.utils.urls import get_url_path
 
 if TYPE_CHECKING:
     # pylint: disable=unused-import
@@ -51,9 +59,10 @@ if TYPE_CHECKING:
 
 metadata = Model.metadata  # pylint: disable=no-member
 config = app.config
+logger = logging.getLogger(__name__)
 
 
-def copy_dashboard(mapper, connection, target):
+def copy_dashboard(mapper: Mapper, connection: Connection, target: "Dashboard") -> None:
     # pylint: disable=unused-argument
     dashboard_id = config["DASHBOARD_TEMPLATE_ID"]
     if dashboard_id is None:
@@ -114,7 +123,7 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
     """The dashboard object!"""
 
     __tablename__ = "dashboards"
-    id = Column(Integer, primary_key=True)  # pylint: disable=invalid-name
+    id = Column(Integer, primary_key=True)
     dashboard_title = Column(String(500))
     position_json = Column(utils.MediumText())
     description = Column(Text)
@@ -134,7 +143,7 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
         "slug",
     ]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.dashboard_title or str(self.id)
 
     @property
@@ -180,23 +189,32 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
         return Markup(f'<a href="{self.url}">{title}</a>')
 
     @property
-    def changed_by_name(self):
+    def digest(self) -> str:
+        """
+            Returns a MD5 HEX digest that makes this dashboard unique
+        """
+        unique_string = f"{self.position_json}.{self.css}.{self.json_metadata}"
+        return utils.md5_hex(unique_string)
+
+    @property
+    def thumbnail_url(self) -> str:
+        """
+            Returns a thumbnail URL with a HEX digest. We want to avoid browser cache
+            if the dashboard has changed
+        """
+        return f"/api/v1/dashboard/{self.id}/thumbnail/{self.digest}/"
+
+    @property
+    def changed_by_name(self) -> str:
         if not self.changed_by:
             return ""
         return str(self.changed_by)
 
     @property
-    def changed_by_url(self):
+    def changed_by_url(self) -> str:
         if not self.changed_by:
             return ""
         return f"/superset/profile/{self.changed_by.username}"
-
-    @property
-    def owners_json(self) -> List[Dict[str, Any]]:
-        owners = []
-        for owner in self.owners:
-            owners.append({"name": owner.name})
-        return owners
 
     @property
     def data(self) -> Dict[str, Any]:
@@ -214,8 +232,8 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
             "position_json": positions,
         }
 
-    @property
-    def params(self) -> str:
+    @property  # type: ignore
+    def params(self) -> str:  # type: ignore
         return self.json_metadata
 
     @params.setter
@@ -223,14 +241,14 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
         self.json_metadata = value
 
     @property
-    def position(self) -> Dict:
+    def position(self) -> Dict[str, Any]:
         if self.position_json:
             return json.loads(self.position_json)
         return {}
 
     @classmethod
     def import_obj(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-        cls, dashboard_to_import: "Dashboard", import_time: Optional[int] = None
+        cls, dashboard_to_import: "Dashboard", import_time: Optional[int] = None,
     ) -> int:
         """Imports the dashboard from the object to the database.
 
@@ -242,7 +260,9 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
          Audit metadata isn't copied over.
         """
 
-        def alter_positions(dashboard, old_to_new_slc_id_dict):
+        def alter_positions(
+            dashboard: Dashboard, old_to_new_slc_id_dict: Dict[int, int]
+        ) -> None:
             """ Updates slice_ids in the position json.
 
             Sample position_json data:
@@ -259,7 +279,7 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
                     "children": ["DASHBOARD_CHART_TYPE-2"]
                 },
                 "DASHBOARD_CHART_TYPE-2": {
-                    "type": "DASHBOARD_CHART_TYPE",
+                    "type": "CHART",
                     "id": "DASHBOARD_CHART_TYPE-2",
                     "children": [],
                     "meta": {
@@ -276,27 +296,31 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
                 if (
                     isinstance(value, dict)
                     and value.get("meta")
-                    and value.get("meta").get("chartId")
+                    and value.get("meta", {}).get("chartId")
                 ):
-                    old_slice_id = value.get("meta").get("chartId")
+                    old_slice_id = value["meta"]["chartId"]
 
                     if old_slice_id in old_to_new_slc_id_dict:
                         value["meta"]["chartId"] = old_to_new_slc_id_dict[old_slice_id]
             dashboard.position_json = json.dumps(position_data)
 
-        logging.info(
+        logger.info(
             "Started import of the dashboard: %s", dashboard_to_import.to_json()
         )
         session = db.session
-        logging.info("Dashboard has %d slices", len(dashboard_to_import.slices))
+        logger.info("Dashboard has %d slices", len(dashboard_to_import.slices))
         # copy slices object as Slice.import_slice will mutate the slice
         # and will remove the existing dashboard - slice association
         slices = copy(dashboard_to_import.slices)
-        old_to_new_slc_id_dict = {}
-        new_filter_immune_slices = []
-        new_filter_immune_slice_fields = {}
+
+        # Clearing the slug to avoid conflicts
+        dashboard_to_import.slug = None
+
+        old_json_metadata = json.loads(dashboard_to_import.json_metadata or "{}")
+        old_to_new_slc_id_dict: Dict[int, int] = {}
         new_timed_refresh_immune_slices = []
         new_expanded_slices = {}
+        new_filter_scopes = {}
         i_params_dict = dashboard_to_import.params_dict
         remote_id_slice_map = {
             slc.params_dict["remote_id"]: slc
@@ -304,7 +328,7 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
             if "remote_id" in slc.params_dict
         }
         for slc in slices:
-            logging.info(
+            logger.info(
                 "Importing slice %s from the dashboard: %s",
                 slc.to_json(),
                 dashboard_to_import.dashboard_title,
@@ -313,20 +337,8 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
             new_slc_id = Slice.import_obj(slc, remote_slc, import_time=import_time)
             old_to_new_slc_id_dict[slc.id] = new_slc_id
             # update json metadata that deals with slice ids
-            new_slc_id_str = "{}".format(new_slc_id)
-            old_slc_id_str = "{}".format(slc.id)
-            if (
-                "filter_immune_slices" in i_params_dict
-                and old_slc_id_str in i_params_dict["filter_immune_slices"]
-            ):
-                new_filter_immune_slices.append(new_slc_id_str)
-            if (
-                "filter_immune_slice_fields" in i_params_dict
-                and old_slc_id_str in i_params_dict["filter_immune_slice_fields"]
-            ):
-                new_filter_immune_slice_fields[new_slc_id_str] = i_params_dict[
-                    "filter_immune_slice_fields"
-                ][old_slc_id_str]
+            new_slc_id_str = str(new_slc_id)
+            old_slc_id_str = str(slc.id)
             if (
                 "timed_refresh_immune_slices" in i_params_dict
                 and old_slc_id_str in i_params_dict["timed_refresh_immune_slices"]
@@ -339,6 +351,27 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
                 new_expanded_slices[new_slc_id_str] = i_params_dict["expanded_slices"][
                     old_slc_id_str
                 ]
+
+        # since PR #9109, filter_immune_slices and filter_immune_slice_fields
+        # are converted to filter_scopes
+        # but dashboard create from import may still have old dashboard filter metadata
+        # here we convert them to new filter_scopes metadata first
+        filter_scopes = {}
+        if (
+            "filter_immune_slices" in i_params_dict
+            or "filter_immune_slice_fields" in i_params_dict
+        ):
+            filter_scopes = convert_filter_scopes(old_json_metadata, slices)
+
+        if "filter_scopes" in i_params_dict:
+            filter_scopes = old_json_metadata.get("filter_scopes")
+
+        # then replace old slice id to new slice id:
+        if filter_scopes:
+            new_filter_scopes = copy_filter_scopes(
+                old_to_new_slc_id_dict=old_to_new_slc_id_dict,
+                old_filter_scopes=filter_scopes,
+            )
 
         # override the dashboard
         existing_dashboard = None
@@ -357,16 +390,12 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
         if dashboard_to_import.position_json:
             alter_positions(dashboard_to_import, old_to_new_slc_id_dict)
         dashboard_to_import.alter_params(import_time=import_time)
+        dashboard_to_import.remove_params(param_to_remove="filter_immune_slices")
+        dashboard_to_import.remove_params(param_to_remove="filter_immune_slice_fields")
+        if new_filter_scopes:
+            dashboard_to_import.alter_params(filter_scopes=new_filter_scopes)
         if new_expanded_slices:
             dashboard_to_import.alter_params(expanded_slices=new_expanded_slices)
-        if new_filter_immune_slices:
-            dashboard_to_import.alter_params(
-                filter_immune_slices=new_filter_immune_slices
-            )
-        if new_filter_immune_slice_fields:
-            dashboard_to_import.alter_params(
-                filter_immune_slice_fields=new_filter_immune_slice_fields
-            )
         if new_timed_refresh_immune_slices:
             dashboard_to_import.alter_params(
                 timed_refresh_immune_slices=new_timed_refresh_immune_slices
@@ -391,7 +420,7 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
 
     @classmethod
     def export_dashboards(  # pylint: disable=too-many-locals
-        cls, dashboard_ids: List
+        cls, dashboard_ids: List[int]
     ) -> str:
         copied_dashboards = []
         datasource_ids = set()
@@ -449,8 +478,21 @@ class Dashboard(  # pylint: disable=too-many-instance-attributes
         )
 
 
+def event_after_dashboard_changed(  # pylint: disable=unused-argument
+    mapper: Mapper, connection: Connection, target: Dashboard
+) -> None:
+    url = get_url_path("Superset.dashboard", dashboard_id_or_slug=target.id)
+    cache_dashboard_thumbnail.delay(url, target.digest, force=True)
+
+
 # events for updating tags
 if is_feature_enabled("TAGGING_SYSTEM"):
     sqla.event.listen(Dashboard, "after_insert", DashboardUpdater.after_insert)
     sqla.event.listen(Dashboard, "after_update", DashboardUpdater.after_update)
     sqla.event.listen(Dashboard, "after_delete", DashboardUpdater.after_delete)
+
+
+# events for updating tags
+if is_feature_enabled("THUMBNAILS_SQLA_LISTENERS"):
+    sqla.event.listen(Dashboard, "after_insert", event_after_dashboard_changed)
+    sqla.event.listen(Dashboard, "after_update", event_after_dashboard_changed)

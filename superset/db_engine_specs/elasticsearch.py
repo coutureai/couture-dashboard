@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Dict, Optional
 
 from superset.db_engine_specs.base import BaseEngineSpec
+from superset.utils import core as utils
 
 
 class ElasticSearchEngineSpec(BaseEngineSpec):  # pylint: disable=abstract-method
@@ -27,7 +28,7 @@ class ElasticSearchEngineSpec(BaseEngineSpec):  # pylint: disable=abstract-metho
     allows_joins = False
     allows_subqueries = True
 
-    _time_grain_functions = {
+    _time_grain_expressions = {
         None: "{col}",
         "PT1S": "HISTOGRAM({col}, INTERVAL 1 SECOND)",
         "PT1M": "HISTOGRAM({col}, INTERVAL 1 MINUTE)",
@@ -41,6 +42,6 @@ class ElasticSearchEngineSpec(BaseEngineSpec):  # pylint: disable=abstract-metho
 
     @classmethod
     def convert_dttm(cls, target_type: str, dttm: datetime) -> Optional[str]:
-        if target_type.upper() == "DATETIME":
+        if target_type.upper() == utils.TemporalType.DATETIME:
             return f"""CAST('{dttm.isoformat(timespec="seconds")}' AS DATETIME)"""
         return None

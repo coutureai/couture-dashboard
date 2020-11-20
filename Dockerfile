@@ -46,17 +46,23 @@ RUN cd /app \
 ######################################################################
 FROM node:10-jessie AS superset-node
 
+ARG NPM_BUILD_CMD="build"
+ENV BUILD_CMD=${NPM_BUILD_CMD}
+
 # NPM ci first, as to NOT invalidate previous steps except for when package.json changes
+RUN mkdir -p /app/superset-frontend
 RUN mkdir -p /app/superset/assets
-COPY ./superset/assets/package* /app/superset/assets/
-RUN cd /app/superset/assets \
+COPY ./docker/frontend-mem-nag.sh /
+COPY ./superset-frontend/package* /app/superset-frontend/
+RUN /frontend-mem-nag.sh \
+        && cd /app/superset-frontend \
         && npm ci
 
 # Next, copy in the rest and let webpack do its thing
-COPY ./superset/assets /app/superset/assets
+COPY ./superset-frontend /app/superset-frontend
 # This is BY FAR the most expensive step (thanks Terser!)
-RUN cd /app/superset/assets \
-        && npm run build \
+RUN cd /app/superset-frontend \
+        && npm run ${BUILD_CMD} \
         && rm -rf node_modules
 
 
@@ -92,7 +98,8 @@ RUN useradd --user-group --no-create-home --no-log-init --shell /bin/bash supers
 COPY --from=superset-py /usr/local/lib/python3.6/site-packages/ /usr/local/lib/python3.6/site-packages/
 # Copying site-packages doesn't move the CLIs, so let's copy them one by one
 COPY --from=superset-py /usr/local/bin/gunicorn /usr/local/bin/celery /usr/local/bin/flask /usr/bin/
-COPY --from=superset-node /app/superset/assets /app/superset/assets
+COPY --from=superset-node /app/superset/static/assets /app/superset/static/assets
+COPY --from=superset-node /app/superset-frontend /app/superset-frontend
 
 ## Lastly, let's install superset itself
 COPY superset /app/superset
@@ -118,9 +125,14 @@ ENTRYPOINT ["/usr/bin/docker-entrypoint.sh"]
 ######################################################################
 FROM lean AS dev
 
-COPY ./requirements-dev.txt ./docker/requirements-extra.txt /app/
+COPY ./requirements* ./docker/requirements* /app/
 
 USER root
+# Cache everything for dev purposes...
 RUN cd /app \
-    && pip install --no-cache -r requirements-dev.txt -r requirements-extra.txt
+    && pip install --ignore-installed -e . \
+    && pip install --ignore-installed -r requirements.txt \
+    && pip install --ignore-installed -r requirements-dev.txt \
+    && pip install --ignore-installed -r requirements-extra.txt \
+    && pip install --ignore-installed -r requirements-local.txt || true
 USER superset

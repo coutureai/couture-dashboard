@@ -25,15 +25,21 @@ from sqlalchemy.orm.session import make_transient
 from tests.test_app import app
 from superset.utils.dashboard_import_export import decode_dashboards
 from superset import db, security_manager
-from superset.connectors.druid.models import DruidColumn, DruidDatasource, DruidMetric
+from superset.connectors.druid.models import (
+    DruidColumn,
+    DruidDatasource,
+    DruidMetric,
+    DruidCluster,
+)
 from superset.connectors.sqla.models import SqlaTable, SqlMetric, TableColumn
 from superset.models.dashboard import Dashboard
 from superset.models.slice import Slice
+from superset.utils.core import get_example_database
 
 from .base_tests import SupersetTestCase
 
 
-class ImportExportTests(SupersetTestCase):
+class TestImportExport(SupersetTestCase):
     """Testing export import functionality for dashboards"""
 
     @classmethod
@@ -119,11 +125,16 @@ class ImportExportTests(SupersetTestCase):
         return table
 
     def create_druid_datasource(self, name, id=0, cols_names=[], metric_names=[]):
-        params = {"remote_id": id, "database_name": "druid_test"}
+        cluster_name = "druid_test"
+        cluster = self.get_or_create(
+            DruidCluster, {"cluster_name": cluster_name}, db.session
+        )
+
+        params = {"remote_id": id, "database_name": cluster_name}
         datasource = DruidDatasource(
             id=id,
             datasource_name=name,
-            cluster_name="druid_test",
+            cluster_id=cluster.id,
             params=json.dumps(params),
         )
         for col_name in cols_names:
@@ -147,8 +158,11 @@ class ImportExportTests(SupersetTestCase):
     def get_table_by_name(self, name):
         return db.session.query(SqlaTable).filter_by(table_name=name).first()
 
-    def assert_dash_equals(self, expected_dash, actual_dash, check_position=True):
-        self.assertEqual(expected_dash.slug, actual_dash.slug)
+    def assert_dash_equals(
+        self, expected_dash, actual_dash, check_position=True, check_slugs=True
+    ):
+        if check_slugs:
+            self.assertEqual(expected_dash.slug, actual_dash.slug)
         self.assertEqual(expected_dash.dashboard_title, actual_dash.dashboard_title)
         self.assertEqual(len(expected_dash.slices), len(actual_dash.slices))
         expected_slices = sorted(expected_dash.slices, key=lambda s: s.slice_name or "")
@@ -225,9 +239,8 @@ class ImportExportTests(SupersetTestCase):
     def test_export_1_dashboard(self):
         self.login("admin")
         birth_dash = self.get_dash_by_slug("births")
-        export_dash_url = "/dashboard/export_dashboards_form?id={}&action=go".format(
-            birth_dash.id
-        )
+        id_ = birth_dash.id
+        export_dash_url = f"/dashboard/export_dashboards_form?id={id_}&action=go"
         resp = self.client.get(export_dash_url)
         exported_dashboards = json.loads(
             resp.data.decode("utf-8"), object_hook=decode_dashboards
@@ -237,7 +250,7 @@ class ImportExportTests(SupersetTestCase):
         self.assert_only_exported_slc_fields(birth_dash, exported_dashboards[0])
         self.assert_dash_equals(birth_dash, exported_dashboards[0])
         self.assertEqual(
-            birth_dash.id,
+            id_,
             json.loads(
                 exported_dashboards[0].json_metadata, object_hook=decode_dashboards
             )["remote_id"],
@@ -351,7 +364,7 @@ class ImportExportTests(SupersetTestCase):
         dash_with_1_slice.position_json = """
             {{"DASHBOARD_VERSION_KEY": "v2",
               "DASHBOARD_CHART_TYPE-{0}": {{
-                "type": "DASHBOARD_CHART_TYPE",
+                "type": "CHART",
                 "id": {0},
                 "children": [],
                 "meta": {{
@@ -369,7 +382,9 @@ class ImportExportTests(SupersetTestCase):
 
         expected_dash = self.create_dashboard("dash_with_1_slice", slcs=[slc], id=10002)
         make_transient(expected_dash)
-        self.assert_dash_equals(expected_dash, imported_dash, check_position=False)
+        self.assert_dash_equals(
+            expected_dash, imported_dash, check_position=False, check_slugs=False
+        )
         self.assertEqual(
             {"remote_id": 10002, "import_time": 1990},
             json.loads(imported_dash.json_metadata),
@@ -391,10 +406,15 @@ class ImportExportTests(SupersetTestCase):
         dash_with_2_slices.json_metadata = json.dumps(
             {
                 "remote_id": 10003,
-                "filter_immune_slices": ["{}".format(e_slc.id)],
                 "expanded_slices": {
                     "{}".format(e_slc.id): True,
                     "{}".format(b_slc.id): False,
+                },
+                # mocked filter_scope metadata
+                "filter_scopes": {
+                    str(e_slc.id): {
+                        "region": {"scope": ["ROOT_ID"], "immune": [b_slc.id]}
+                    }
                 },
             }
         )
@@ -406,13 +426,19 @@ class ImportExportTests(SupersetTestCase):
             "dash_with_2_slices", slcs=[e_slc, b_slc], id=10003
         )
         make_transient(expected_dash)
-        self.assert_dash_equals(imported_dash, expected_dash, check_position=False)
+        self.assert_dash_equals(
+            imported_dash, expected_dash, check_position=False, check_slugs=False
+        )
         i_e_slc = self.get_slice_by_name("e_slc")
         i_b_slc = self.get_slice_by_name("b_slc")
         expected_json_metadata = {
             "remote_id": 10003,
             "import_time": 1991,
-            "filter_immune_slices": ["{}".format(i_e_slc.id)],
+            "filter_scopes": {
+                str(i_e_slc.id): {
+                    "region": {"scope": ["ROOT_ID"], "immune": [i_b_slc.id]}
+                }
+            },
             "expanded_slices": {
                 "{}".format(i_e_slc.id): True,
                 "{}".format(i_b_slc.id): False,
@@ -448,7 +474,9 @@ class ImportExportTests(SupersetTestCase):
         )
         make_transient(expected_dash)
         imported_dash = self.get_dash(imported_dash_id_2)
-        self.assert_dash_equals(expected_dash, imported_dash, check_position=False)
+        self.assert_dash_equals(
+            expected_dash, imported_dash, check_position=False, check_slugs=False
+        )
         self.assertEqual(
             {"remote_id": 10004, "import_time": 1992},
             json.loads(imported_dash.json_metadata),
@@ -522,7 +550,7 @@ class ImportExportTests(SupersetTestCase):
         dash_with_1_slice.position_json = """
                 {{"DASHBOARD_VERSION_KEY": "v2",
                 "DASHBOARD_CHART_TYPE-{0}": {{
-                    "type": "DASHBOARD_CHART_TYPE",
+                    "type": "CHART",
                     "id": {0},
                     "children": [],
                     "meta": {{
@@ -538,17 +566,19 @@ class ImportExportTests(SupersetTestCase):
         return dash_with_1_slice
 
     def test_import_table_no_metadata(self):
+        db_id = get_example_database().id
         table = self.create_table("pure_table", id=10001)
-        imported_id = SqlaTable.import_obj(table, import_time=1989)
-        imported = self.get_table(imported_id)
+        imported_id = SqlaTable.import_obj(table, db_id, import_time=1989)
+        imported = self.get_table_by_id(imported_id)
         self.assert_table_equals(table, imported)
 
     def test_import_table_1_col_1_met(self):
         table = self.create_table(
             "table_1_col_1_met", id=10002, cols_names=["col1"], metric_names=["metric1"]
         )
-        imported_id = SqlaTable.import_obj(table, import_time=1990)
-        imported = self.get_table(imported_id)
+        db_id = get_example_database().id
+        imported_id = SqlaTable.import_obj(table, db_id, import_time=1990)
+        imported = self.get_table_by_id(imported_id)
         self.assert_table_equals(table, imported)
         self.assertEqual(
             {"remote_id": 10002, "import_time": 1990, "database_name": "examples"},
@@ -562,16 +592,18 @@ class ImportExportTests(SupersetTestCase):
             cols_names=["c1", "c2"],
             metric_names=["m1", "m2"],
         )
-        imported_id = SqlaTable.import_obj(table, import_time=1991)
+        db_id = get_example_database().id
+        imported_id = SqlaTable.import_obj(table, db_id, import_time=1991)
 
-        imported = self.get_table(imported_id)
+        imported = self.get_table_by_id(imported_id)
         self.assert_table_equals(table, imported)
 
     def test_import_table_override(self):
         table = self.create_table(
             "table_override", id=10003, cols_names=["col1"], metric_names=["m1"]
         )
-        imported_id = SqlaTable.import_obj(table, import_time=1991)
+        db_id = get_example_database().id
+        imported_id = SqlaTable.import_obj(table, db_id, import_time=1991)
 
         table_over = self.create_table(
             "table_override",
@@ -579,9 +611,9 @@ class ImportExportTests(SupersetTestCase):
             cols_names=["new_col1", "col2", "col3"],
             metric_names=["new_metric1"],
         )
-        imported_over_id = SqlaTable.import_obj(table_over, import_time=1992)
+        imported_over_id = SqlaTable.import_obj(table_over, db_id, import_time=1992)
 
-        imported_over = self.get_table(imported_over_id)
+        imported_over = self.get_table_by_id(imported_over_id)
         self.assertEqual(imported_id, imported_over.id)
         expected_table = self.create_table(
             "table_override",
@@ -598,7 +630,8 @@ class ImportExportTests(SupersetTestCase):
             cols_names=["new_col1", "col2", "col3"],
             metric_names=["new_metric1"],
         )
-        imported_id = SqlaTable.import_obj(table, import_time=1993)
+        db_id = get_example_database().id
+        imported_id = SqlaTable.import_obj(table, db_id, import_time=1993)
 
         copy_table = self.create_table(
             "copy_cat",
@@ -606,10 +639,10 @@ class ImportExportTests(SupersetTestCase):
             cols_names=["new_col1", "col2", "col3"],
             metric_names=["new_metric1"],
         )
-        imported_id_copy = SqlaTable.import_obj(copy_table, import_time=1994)
+        imported_id_copy = SqlaTable.import_obj(copy_table, db_id, import_time=1994)
 
         self.assertEqual(imported_id, imported_id_copy)
-        self.assert_table_equals(copy_table, self.get_table(imported_id))
+        self.assert_table_equals(copy_table, self.get_table_by_id(imported_id))
 
     def test_import_druid_no_metadata(self):
         datasource = self.create_druid_datasource("pure_druid", id=10001)
