@@ -152,11 +152,13 @@ class SupersetAppInitializer:
         from superset.views.css_templates import CssTemplateModelView
         from superset.charts.api import ChartRestApi
         from superset.views.chart.views import SliceModelView, SliceAsync
-        from superset.dashboards.api import DashboardRestApi
+        from superset.dashboards.api import DashboardRestApi, CoutureTemplatesRestApi
         from superset.views.dashboard.views import (
             DashboardModelView,
+            CoutureTemplatesModelView,
             Dashboard,
             DashboardModelViewAsync,
+            CoutureTemplatesModelViewAsync,
         )
         from superset.views.database.api import DatabaseRestApi
         from superset.views.database.views import (
@@ -190,6 +192,7 @@ class SupersetAppInitializer:
         #
         appbuilder.add_api(ChartRestApi)
         appbuilder.add_api(DashboardRestApi)
+        appbuilder.add_api(CoutureTemplatesRestApi)
         appbuilder.add_api(DatabaseRestApi)
         appbuilder.add_api(DatasetRestApi)
         appbuilder.add_api(QueryRestApi)
@@ -223,6 +226,24 @@ class SupersetAppInitializer:
             category_label=__("Sources"),
             category_icon="fa-table",
         )
+        appbuilder.add_view(
+            CoutureTemplatesModelView,
+            "Dashboards",
+            label=__("Couture Templates"),
+            icon="fa-wrench",
+            category="Dashboards",
+            category_label=__("Dashboards"),
+            category_icon="fa-dashboard",
+        )
+        appbuilder.add_view(
+            DashboardModelView,
+            "Dashboards",
+            label=__("Saved Dashboards"),
+            icon="fa-save",
+            category="Dashboards",
+            category_label=__("Dashboards"),
+            category_icon="fa-dashboard",
+        )
         appbuilder.add_separator("Sources")
         appbuilder.add_view(
             SliceModelView,
@@ -232,14 +253,14 @@ class SupersetAppInitializer:
             category="",
             category_icon="",
         )
-        appbuilder.add_view(
-            DashboardModelView,
-            "Dashboards",
-            label=__("Dashboards"),
-            icon="fa-dashboard",
-            category="",
-            category_icon="",
-        )
+        # appbuilder.add_view(
+        #     DashboardModelView,
+        #     "Dashboards",
+        #     label=__("Dashboards"),
+        #     icon="fa-dashboard",
+        #     category="",
+        #     category_icon="",
+        # )
         appbuilder.add_view(
             CssTemplateModelView,
             "CSS Templates",

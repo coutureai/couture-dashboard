@@ -22,6 +22,7 @@ from flask_appbuilder import expose
 from flask_appbuilder.actions import action
 from flask_appbuilder.models.sqla.interface import SQLAInterface
 from flask_appbuilder.security.decorators import has_access
+from flask_appbuilder.models.sqla.filters import FilterEqualFunction,  FilterStartsWith
 from flask_babel import gettext as __, lazy_gettext as _
 
 import superset.models.core as models
@@ -102,6 +103,72 @@ class DashboardModelView(
         check_ownership(item)
         self.pre_add(item)
 
+class CoutureTemplatesModelView(
+    DashboardMixin, SupersetModelView, DeleteMixin
+):  # pylint: disable=too-many-ancestors
+    route_base = "/couture_templates"
+    datamodel = SQLAInterface(models.Dashboard)
+    # base_filters = [['dashboard_title', FilterEqualFunction, 'Misc Charts']]
+    base_filters = [['dashboard_title', FilterStartsWith, 'Misc Charts']]
+    base_order = ('dashboard_title', 'asc')
+    # TODO disable api_read and api_delete (used by cypress)
+    # once we move to ChartRestModelApi
+    include_route_methods = RouteMethod.CRUD_SET | {
+        RouteMethod.API_READ,
+        RouteMethod.API_DELETE,
+        "download_dashboards",
+    }
+
+    @has_access
+    @expose("/list/")
+    def list(self) -> FlaskResponse:
+        if not app.config["ENABLE_REACT_CRUD_VIEWS"]:
+            return super().list()
+
+        return super().render_app_template()
+
+    @action("mulexport", __("Export"), __("Export dashboards?"), "fa-database")
+    def mulexport(  # pylint: disable=no-self-use
+        self, items: Union["CoutureTemplatesModelView", List["CoutureTemplatesModelView"]]
+    ) -> FlaskResponse:
+        if not isinstance(items, list):
+            items = [items]
+        ids = "".join("&id={}".format(d.id) for d in items)
+        return redirect("/couture_templates/export_dashboards_form?{}".format(ids[1:]))
+
+    @event_logger.log_this
+    @has_access
+    @expose("/export_dashboards_form")
+    def download_dashboards(self) -> FlaskResponse:
+        if request.args.get("action") == "go":
+            ids = request.args.getlist("id")
+            return Response(
+                models.Dashboard.export_dashboards(ids),
+                headers=generate_download_headers("json"),
+                mimetype="application/text",
+            )
+        return self.render_template(
+            "superset/export_dashboards.html", dashboards_url="/dashboard/list"
+        )
+
+    def pre_add(self, item: "CoutureTemplatesModelView") -> None:
+        item.slug = item.slug or None
+        if item.slug:
+            item.slug = item.slug.strip()
+            item.slug = item.slug.replace(" ", "-")
+            item.slug = re.sub(r"[^\w\-]+", "", item.slug)
+        if g.user not in item.owners:
+            item.owners.append(g.user)
+        utils.validate_json(item.json_metadata)
+        utils.validate_json(item.position_json)
+        owners = list(item.owners)
+        for slc in item.slices:
+            slc.owners = list(set(owners) | set(slc.owners))
+
+    def pre_update(self, item: "CoutureTemplatesModelView") -> None:
+        check_ownership(item)
+        self.pre_add(item)
+
 
 class Dashboard(BaseSupersetView):
     """The base views for Superset!"""
@@ -120,6 +187,27 @@ class Dashboard(BaseSupersetView):
 
 class DashboardModelViewAsync(DashboardModelView):  # pylint: disable=too-many-ancestors
     route_base = "/dashboardasync"
+    include_route_methods = {RouteMethod.API_READ}
+
+    list_columns = [
+        "id",
+        "dashboard_link",
+        "creator",
+        "modified",
+        "dashboard_title",
+        "changed_on",
+        "url",
+        "changed_by_name",
+    ]
+    label_columns = {
+        "dashboard_link": _("Dashboard"),
+        "dashboard_title": _("Title"),
+        "creator": _("Creator"),
+        "modified": _("Modified"),
+    }
+
+class CoutureTemplatesModelViewAsync(CoutureTemplatesModelView):  # pylint: disable=too-many-ancestors
+    route_base = "/couture_templates_async"
     include_route_methods = {RouteMethod.API_READ}
 
     list_columns = [

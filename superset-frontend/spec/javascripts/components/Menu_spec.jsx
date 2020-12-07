@@ -68,7 +68,20 @@ const defaultProps = {
         name: 'Dashboards',
         icon: 'fa-dashboard',
         label: 'Dashboards',
-        url: '/dashboard/list/',
+        childs: [
+          {
+            name: 'Couture Templates',
+            icon: 'fa-bar-chart',
+            label: 'Couture Templates',
+            url: '/dashboard/list/',
+          },
+          {
+            name: 'Saved Dashboards',
+            icon: 'fa-save',
+            label: 'Saved Dashboards',
+            url: '/dashboard/list/',
+          },
+        ]
       },
     ],
     brand: {

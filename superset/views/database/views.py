@@ -47,6 +47,8 @@ from .validators import schema_allows_csv_upload, sqlalchemy_uri_validator
 
 if TYPE_CHECKING:
     from werkzeug.datastructures import FileStorage  # pylint: disable=unused-import
+import requests
+import urllib
 
 config = app.config
 stats_logger = config["STATS_LOGGER"]

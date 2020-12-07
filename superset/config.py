@@ -154,11 +154,11 @@ SECRET_KEY = (
 )
 
 # The SQLAlchemy connection string.
-DB_DIALECT = os.environ.get("DATABASE_DIALECT", "postgresql")
+DB_DIALECT = os.environ.get("DATABASE_DIALECT", "mysql")
 DB_USER = os.environ.get("DATABASE_USER", "superset")
 DB_PASSWORD = os.environ.get("DATABASE_PASSWORD", "superset")
-DB_HOST = os.environ.get("DATABASE_HOST", "db")
-DB_PORT = os.environ.get("DATABASE_PORT", "5432")
+DB_HOST = os.environ.get("DATABASE_HOST", "localhost")
+DB_PORT = os.environ.get("DATABASE_PORT", "3306")
 DB_DATABASE = os.environ.get("DATABASE_DB", "superset")
 
 REDIS_HOST = os.environ.get("REDIS_HOST", "redis")

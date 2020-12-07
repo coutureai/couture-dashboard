@@ -354,7 +354,7 @@ export default class ResultSet extends React.PureComponent<
         <div>{progressBar}</div>
         <div>{trackingUrl}</div>
         <div>
-          <AddToEDASourcesButton query={this.props.query} className="fetch"/>
+          {/* <AddToEDASourcesButton query={this.props.query} className="fetch"/> */}
         </div>
       </div>
     );

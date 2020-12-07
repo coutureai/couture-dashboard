@@ -576,6 +576,7 @@ class TestRolePermission(SupersetTestCase):
         # make sure that user can create slices and dashboards
         self.assert_can_all("SliceModelView", perm_set)
         self.assert_can_all("DashboardModelView", perm_set)
+        self.assert_can_all("CoutureTemplatesModelView", perm_set)
 
         self.assertIn(("can_add_slices", "Superset"), perm_set)
         self.assertIn(("can_copy_dash", "Superset"), perm_set)
@@ -766,6 +767,7 @@ class TestRolePermission(SupersetTestCase):
         # make sure that user can create slices and dashboards
         assert_can_all("SliceModelView")
         assert_can_all("DashboardModelView")
+        assert_can_all("CoutureTemplatesView")
 
         self.assertIn(("can_add_slices", "Superset"), gamma_perm_set)
         self.assertIn(("can_copy_dash", "Superset"), gamma_perm_set)
