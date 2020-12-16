@@ -22,7 +22,7 @@ from flask_appbuilder import expose
 from flask_appbuilder.actions import action
 from flask_appbuilder.models.sqla.interface import SQLAInterface
 from flask_appbuilder.security.decorators import has_access
-from flask_appbuilder.models.sqla.filters import FilterEqualFunction,  FilterStartsWith
+from flask_appbuilder.models.sqla.filters import FilterNotStartsWith,  FilterStartsWith, FilterEqual
 from flask_babel import gettext as __, lazy_gettext as _
 
 import superset.models.core as models
@@ -37,7 +37,7 @@ from superset.views.base import (
     generate_download_headers,
     SupersetModelView,
 )
-from superset.views.dashboard.mixin import DashboardMixin
+from superset.views.dashboard.mixin import DashboardMixin, CoutureTemplatesMixin
 
 
 class DashboardModelView(
@@ -47,6 +47,8 @@ class DashboardModelView(
     datamodel = SQLAInterface(models.Dashboard)
     # TODO disable api_read and api_delete (used by cypress)
     # once we move to ChartRestModelApi
+    base_filters = [['dashboard_title', FilterNotStartsWith, 'test']]
+    base_order = ('dashboard_title', 'asc')
     include_route_methods = RouteMethod.CRUD_SET | {
         RouteMethod.API_READ,
         RouteMethod.API_DELETE,
@@ -104,12 +106,12 @@ class DashboardModelView(
         self.pre_add(item)
 
 class CoutureTemplatesModelView(
-    DashboardMixin, SupersetModelView, DeleteMixin
+    CoutureTemplatesMixin, SupersetModelView, DeleteMixin
 ):  # pylint: disable=too-many-ancestors
     route_base = "/couture_templates"
     datamodel = SQLAInterface(models.Dashboard)
     # base_filters = [['dashboard_title', FilterEqualFunction, 'Misc Charts']]
-    base_filters = [['dashboard_title', FilterStartsWith, 'Misc Charts']]
+    base_filters = [['dashboard_title', FilterStartsWith, 'test']]
     base_order = ('dashboard_title', 'asc')
     # TODO disable api_read and api_delete (used by cypress)
     # once we move to ChartRestModelApi
