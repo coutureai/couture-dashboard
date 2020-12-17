@@ -36,8 +36,9 @@ from superset.views.base import (
     DeleteMixin,
     generate_download_headers,
     SupersetModelView,
+    CoutureModelView,
 )
-from superset.views.dashboard.mixin import DashboardMixin, CoutureTemplatesMixin
+from superset.views.dashboard.mixin import DashboardMixin
 
 
 class DashboardModelView(
@@ -106,8 +107,9 @@ class DashboardModelView(
         self.pre_add(item)
 
 class CoutureTemplatesModelView(
-    CoutureTemplatesMixin, SupersetModelView, DeleteMixin
+    DashboardMixin, CoutureModelView, DeleteMixin
 ):  # pylint: disable=too-many-ancestors
+    list_title = _("Couture Templates")
     route_base = "/couture_templates"
     datamodel = SQLAInterface(models.Dashboard)
     # base_filters = [['dashboard_title', FilterEqualFunction, 'Misc Charts']]

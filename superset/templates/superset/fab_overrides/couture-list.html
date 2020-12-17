@@ -1,0 +1,75 @@
+{#
+    Licensed to the Apache Software Foundation (ASF) under one
+    or more contributor license agreements.  See the NOTICE file
+    distributed with this work for additional information
+    regarding copyright ownership.  The ASF licenses this file
+    to you under the Apache License, Version 2.0 (the
+    "License"); you may not use this file except in compliance
+    with the License.  You may obtain a copy of the License at
+  
+      http://www.apache.org/licenses/LICENSE-2.0
+  
+    Unless required by applicable law or agreed to in writing,
+    software distributed under the License is distributed on an
+    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    KIND, either express or implied.  See the License for the
+    specific language governing permissions and limitations
+    under the License.
+  #}
+  {% extends 'superset/fab_overrides/base-couture-templates.html' %}
+  {% block begin_content scoped %}
+    <div class="modal fade" id="modal-eda-help" tabindex="-1" role="dialog">
+      <!-- Help modal for EDA. shown when edaHelp=True -->
+      <div class="modal-dialog modal-md">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">
+                Exploratory Data Analysis.
+                </h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-text">
+                  <ol class="list-group">
+                    <li class="list-group-item">
+                      1. Click on the 
+                      <a href="#" class="btn btn-sm btn-primary" style="border-radius: 100%;">
+                        <i class="fa fa-plus"></i>
+                      </a>
+                      on the top right corner to add a new database.
+                    <br>
+                    2. Click on <code>Select Tables for Exploratory Data Analysis</code>
+                    </li>
+                  </ol>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">OK</button>
+            </div>
+        </div>
+      </div>
+    </div>
+      <div class="table-responsive">
+      <table class="table table-hover">
+  {% endblock %}
+  
+  {% block end_content scoped %}
+    {{ super() }}
+    <a href="/superset/sqllab" class="btn btn-primary btn-sm btn-default" data-toggle="tooltip" rel="tooltip"
+      title="{{_('Explore tables of database')}}">
+        <i class="fa fa-line-chart"></i>
+        Select Tables for Exploratory Data Analysis
+    </a>
+    {% if request.args.get('edaHelp') == 'True' %}
+    <script>
+      $(document).ready(function() {
+        $('#modal-eda-help').modal();
+      })
+    </script>
+    {% endif %}
+    <!-- <script>
+      function redirectToSQLLab() {
+        window.location.href = '/superset/sqllab/'
+      }
+    </script> -->
+  {% endblock %}
+  

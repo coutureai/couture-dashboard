@@ -315,6 +315,8 @@ def common_bootstrap_payload() -> Dict[str, Any]:
 class SupersetListWidget(ListWidget):  # pylint: disable=too-few-public-methods
     template = "superset/fab_overrides/list.html"
 
+class CoutureListWidget(ListWidget):  # pylint: disable=too-few-public-methods
+    template = "superset/fab_overrides/couture-list.html"
 
 class SupersetModelView(ModelView):
     page_size = 100
@@ -333,6 +335,22 @@ class SupersetModelView(ModelView):
             ),
         )
 
+class CoutureModelView(ModelView):
+    page_size = 100
+    list_widget = CoutureListWidget
+
+    def render_app_template(self) -> FlaskResponse:
+        payload = {
+            "user": bootstrap_user_data(g.user),
+            "common": common_bootstrap_payload(),
+        }
+        return self.render_template(
+            "superset/welcome.html",
+            entry="welcome",
+            bootstrap_data=json.dumps(
+                payload, default=utils.pessimistic_json_iso_dttm_ser
+            ),
+        )
 
 class ListWidgetWithCheckboxes(ListWidget):  # pylint: disable=too-few-public-methods
     """An alternative to list view that renders Boolean fields as checkboxes
